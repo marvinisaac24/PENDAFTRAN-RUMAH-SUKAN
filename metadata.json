@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Pengurusan & Pendaftaran Kejohanan Sukan Sekolah",
+  "description": "Sistem muat naik senarai murid mengikut rumah sukan dan kelas serta pendaftaran acara sukan sekolah secara masa nyata.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

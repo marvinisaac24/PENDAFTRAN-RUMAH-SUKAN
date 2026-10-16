@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health check endpoint
+    match /test/connection {
+      allow read, write: if true;
+    }
+
+    // Koleksi Senarai Murid
+    match /murid/{muridId} {
+      allow read: if true;
+      allow create, update: if isValidId(muridId) 
+        && request.resource.data.id is string 
+        && request.resource.data.nama is string 
+        && request.resource.data.nama.size() <= 150
+        && request.resource.data.kelas is string
+        && request.resource.data.rumahSukan in ['Merah', 'Kuning', 'Hijau', 'Biru'];
+      allow delete: if isValidId(muridId);
+    }
+
+    // Koleksi Acara Sukan
+    match /acara/{acaraId} {
+      allow read: if true;
+      allow create, update: if isValidId(acaraId)
+        && request.resource.data.id is string
+        && request.resource.data.nama is string
+        && request.resource.data.nama.size() <= 100;
+      allow delete: if isValidId(acaraId);
+    }
+
+    // Koleksi Pendaftaran Acara
+    match /pendaftaran/{pendaftaranId} {
+      allow read: if true;
+      allow create, update: if isValidId(pendaftaranId)
+        && request.resource.data.id is string
+        && request.resource.data.acaraId is string
+        && request.resource.data.acaraNama is string
+        && request.resource.data.rumahSukan in ['Merah', 'Kuning', 'Hijau', 'Biru']
+        && request.resource.data.peserta is list;
+      allow delete: if isValidId(pendaftaranId);
+    }
+  }
+}

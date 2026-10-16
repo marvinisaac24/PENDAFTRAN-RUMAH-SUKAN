@@ -1,0 +1,142 @@
+{
+  "entities": {
+    "murid": {
+      "title": "Murid",
+      "description": "Maklumat murid mengikut rumah sukan dan kelas",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID Murid",
+          "maxLength": 64
+        },
+        "nama": {
+          "type": "string",
+          "description": "Nama penuh murid",
+          "maxLength": 150
+        },
+        "tahun": {
+          "type": "number",
+          "description": "Tahun persekolahan (1 - 6)"
+        },
+        "kelas": {
+          "type": "string",
+          "description": "Nama kelas murid",
+          "maxLength": 64
+        },
+        "jantina": {
+          "type": "string",
+          "description": "Jantina murid (Lelaki atau Perempuan)",
+          "enum": ["Lelaki", "Perempuan"]
+        },
+        "rumahSukan": {
+          "type": "string",
+          "description": "Rumah sukan murid",
+          "enum": ["Merah", "Kuning", "Hijau", "Biru"]
+        },
+        "tarikhKemaskini": {
+          "type": "string",
+          "description": "Tarikh kemaskini rekod"
+        }
+      },
+      "required": ["id", "nama", "tahun", "kelas", "jantina", "rumahSukan"]
+    },
+    "acara": {
+      "title": "AcaraSukan",
+      "description": "Acara dan kategori sukan yang dipertandingkan",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID Acara",
+          "maxLength": 64
+        },
+        "nama": {
+          "type": "string",
+          "description": "Nama acara",
+          "maxLength": 100
+        },
+        "kod": {
+          "type": "string",
+          "description": "Kod acara",
+          "maxLength": 32
+        },
+        "kategori": {
+          "type": "string",
+          "enum": ["Balapan", "Padang", "Sukaneka"]
+        },
+        "kategoriJantina": {
+          "type": "string",
+          "enum": ["Lelaki", "Perempuan", "Terbuka"]
+        },
+        "tahunKelayakan": {
+          "type": "array",
+          "description": "Senarai tahun kelayakan murid"
+        },
+        "jenis": {
+          "type": "string",
+          "enum": ["Individu", "Berkumpulan"]
+        },
+        "bilanganAhli": {
+          "type": "number",
+          "description": "Bilangan ahli peserta"
+        }
+      },
+      "required": ["id", "nama", "kod", "kategori", "kategoriJantina", "jenis", "bilanganAhli"]
+    },
+    "pendaftaran": {
+      "title": "PendaftaranAcara",
+      "description": "Rekod pendaftaran murid bagi acara sukan sekolah",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID Pendaftaran",
+          "maxLength": 64
+        },
+        "acaraId": {
+          "type": "string",
+          "description": "ID Acara",
+          "maxLength": 64
+        },
+        "acaraNama": {
+          "type": "string",
+          "description": "Nama Acara",
+          "maxLength": 100
+        },
+        "rumahSukan": {
+          "type": "string",
+          "enum": ["Merah", "Kuning", "Hijau", "Biru"]
+        },
+        "peserta": {
+          "type": "array",
+          "description": "Senarai maklumat peserta murid"
+        },
+        "tarikhDaftar": {
+          "type": "string",
+          "description": "Tarikh masa pendaftaran dibuat"
+        },
+        "catatan": {
+          "type": "string",
+          "description": "Catatan tambahan",
+          "maxLength": 250
+        }
+      },
+      "required": ["id", "acaraId", "acaraNama", "rumahSukan", "peserta", "tarikhDaftar"]
+    }
+  },
+  "firestore": {
+    "/murid/{muridId}": {
+      "schema": { "$ref": "entities/murid" },
+      "description": "Koleksi senarai murid mengikut rumah sukan dan kelas"
+    },
+    "/acara/{acaraId}": {
+      "schema": { "$ref": "entities/acara" },
+      "description": "Koleksi acara sukan kejohanan sekolah"
+    },
+    "/pendaftaran/{pendaftaranId}": {
+      "schema": { "$ref": "entities/pendaftaran" },
+      "description": "Koleksi pendaftaran acara kejohanan sukan"
+    }
+  }
+}

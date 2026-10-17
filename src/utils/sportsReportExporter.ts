@@ -87,7 +87,7 @@ export function exportMasterSportsWorkbook({
       'Nama Acara': acara.nama,
       'Kategori': acara.kategori,
       'Tahun Kelayakan': tahunLabel,
-      'Jantina': acara.jantina,
+      'Jantina': acara.kategoriJantina,
       'Masa / Jadual': acara.masa || '-',
       '🔴 RUMAH MERAH': formatPesertaListCell(regMerah),
       '🟡 RUMAH KUNING': formatPesertaListCell(regKuning),

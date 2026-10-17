@@ -8,7 +8,8 @@ import {
   Sparkles,
   School,
   Activity,
-  ArrowRight
+  ArrowRight,
+  Settings
 } from 'lucide-react';
 import { AcaraSukan, Murid, PendaftaranAcara } from './types';
 import { StorageService, initFirebaseSync } from './services/storageService';
@@ -17,10 +18,11 @@ import { AdminUpload } from './components/AdminUpload';
 import { StudentDirectory } from './components/StudentDirectory';
 import { RegistrationList } from './components/RegistrationList';
 import { Dashboard } from './components/Dashboard';
+import { EventSettings } from './components/EventSettings';
 import { GlobalSearchBar } from './components/GlobalSearchBar';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'pendaftaran' | 'senarai' | 'muatnaik' | 'murid' | 'dashboard'>('pendaftaran');
+  const [activeTab, setActiveTab] = useState<'pendaftaran' | 'senarai' | 'muatnaik' | 'murid' | 'dashboard' | 'tetapan'>('pendaftaran');
   const [muridList, setMuridList] = useState<Murid[]>([]);
   const [acaraList, setAcaraList] = useState<AcaraSukan[]>([]);
   const [pendaftaranList, setPendaftaranList] = useState<PendaftaranAcara[]>([]);
@@ -171,6 +173,19 @@ export default function App() {
               <LayoutDashboard className="w-4 h-4" />
               <span>5. Dashboard Ringkasan</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('tetapan')}
+              className={`cursor-pointer flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'tetapan'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              <span>6. Tetapan Acara ({acaraList.length})</span>
+            </button>
           </div>
         </div>
       </header>
@@ -189,6 +204,7 @@ export default function App() {
         {activeTab === 'senarai' && (
           <RegistrationList
             pendaftaranList={pendaftaranList}
+            acaraList={acaraList}
             onRefresh={refreshAllData}
           />
         )}
@@ -203,6 +219,8 @@ export default function App() {
         {activeTab === 'murid' && (
           <StudentDirectory
             muridList={muridList}
+            pendaftaranList={pendaftaranList}
+            acaraList={acaraList}
             onRefresh={refreshAllData}
           />
         )}
@@ -214,6 +232,13 @@ export default function App() {
             pendaftaranList={pendaftaranList}
             onNavigateToRegistration={() => setActiveTab('pendaftaran')}
             onNavigateToUpload={() => setActiveTab('muatnaik')}
+          />
+        )}
+
+        {activeTab === 'tetapan' && (
+          <EventSettings
+            acaraList={acaraList}
+            onRefresh={refreshAllData}
           />
         )}
       </main>
@@ -231,7 +256,7 @@ export default function App() {
             <span>•</span>
             <span>Pangkalan Data Masa Nyata</span>
             <span>•</span>
-            <span>Kategori MSSM</span>
+            <span>Kategori MSSR</span>
           </div>
         </div>
       </footer>

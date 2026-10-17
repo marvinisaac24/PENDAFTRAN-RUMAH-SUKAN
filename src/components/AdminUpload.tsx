@@ -252,6 +252,27 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ currentMuridList, onUp
           </div>
         </div>
 
+        {/* Panduan Kategori MSSR, ID Murid & Pra Sekolah */}
+        <div className="mt-4 p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-950 flex items-start gap-2.5">
+          <Info className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+          <div className="space-y-1 flex-1">
+            <div className="font-bold text-indigo-900 flex items-center gap-2">
+              <span>Panduan Kategori MSSR & Pendaftaran Fail:</span>
+              <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                Piawaian MSSR
+              </span>
+            </div>
+            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-indigo-900/80">
+              <li>
+                <strong>ID Murid Tidak Diperlukan Dalam Fail:</strong> Fail sekolah anda tidak wajib mengandungi ID Murid. Sistem akan menjana ID Murid / No. Peserta secara automatik mengikut Rumah Sukan dan Tahun hanya untuk peserta yang dipilih bagi acara.
+              </li>
+              <li>
+                <strong>Kelas Pra Sekolah Disokong:</strong> Menyokong kelas Pra Sekolah termasuk <em>Pra Cekal</em>, <em>Pra Dinamik</em>, <em>Pra Arif</em>, <em>Pra Bestari</em>, <em>Pra Efisien</em>, dan <em>Pra Fleksibel</em>.
+              </li>
+            </ul>
+          </div>
+        </div>
+
         {/* Upload Mode Selector */}
         <div className="mt-6 space-y-4">
           <div className="text-xs font-bold uppercase tracking-wider text-slate-500">

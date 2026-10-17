@@ -462,7 +462,23 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
 
   const sampleRows = [
     {
-      'ID Murid': 'M-3001',
+      'ID Murid': '', // ID Murid pilihan - akan dijana automatik semasa murid dipilih untuk acara
+      'Nama Murid': 'Muhammad Daniyal bin Azman',
+      'Tahun': 0,
+      'Kelas': 'Pra Cekal',
+      'Jantina': 'Lelaki',
+      'Rumah Sukan': rumahSukanPrefix || 'Merah',
+    },
+    {
+      'ID Murid': '', // ID Murid pilihan - akan dijana automatik semasa murid dipilih untuk acara
+      'Nama Murid': 'Nur Arissa Sofea binti Hamdan',
+      'Tahun': 0,
+      'Kelas': 'Pra Dinamik',
+      'Jantina': 'Perempuan',
+      'Rumah Sukan': rumahSukanPrefix || 'Merah',
+    },
+    {
+      'ID Murid': '',
       'Nama Murid': 'Ahmad Danish bin Rosli',
       'Tahun': 3,
       'Kelas': '3 Fleksibel',
@@ -470,7 +486,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Merah',
     },
     {
-      'ID Murid': 'M-3002',
+      'ID Murid': '',
       'Nama Murid': 'Muhammad Harith bin Zamri',
       'Tahun': 3,
       'Kelas': '3 Arif',
@@ -478,7 +494,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Merah',
     },
     {
-      'ID Murid': 'M-3003',
+      'ID Murid': '',
       'Nama Murid': 'Nur Ain binti Zulkifli',
       'Tahun': 3,
       'Kelas': '3 Bestari',
@@ -486,7 +502,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Merah',
     },
     {
-      'ID Murid': 'M-1001',
+      'ID Murid': '',
       'Nama Murid': 'Muhammad Adam Rayyan',
       'Tahun': 1,
       'Kelas': '1 Cekal',
@@ -494,7 +510,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Merah',
     },
     {
-      'ID Murid': 'M-2001',
+      'ID Murid': '',
       'Nama Murid': 'Siti Nur Aisyah binti Latif',
       'Tahun': 2,
       'Kelas': '2 Dinamik',
@@ -502,7 +518,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Merah',
     },
     {
-      'ID Murid': 'K-3001',
+      'ID Murid': '',
       'Nama Murid': 'Chong Jin Wei',
       'Tahun': 3,
       'Kelas': '3 Cekal',
@@ -510,7 +526,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Kuning',
     },
     {
-      'ID Murid': 'H-4001',
+      'ID Murid': '',
       'Nama Murid': 'Bryan Lee Jun Hao',
       'Tahun': 4,
       'Kelas': '4 Dinamik',
@@ -518,7 +534,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Hijau',
     },
     {
-      'ID Murid': 'B-5001',
+      'ID Murid': '',
       'Nama Murid': 'Zarif Irfan bin Zaidi',
       'Tahun': 5,
       'Kelas': '5 Efisien',
@@ -526,7 +542,7 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
       'Rumah Sukan': rumahSukanPrefix || 'Biru',
     },
     {
-      'ID Murid': 'B-6001',
+      'ID Murid': '',
       'Nama Murid': 'Farah Nabilah binti Khairul',
       'Tahun': 6,
       'Kelas': '6 Fleksibel',

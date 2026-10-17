@@ -134,7 +134,10 @@ export const PrintableCardSlipModal: React.FC<PrintableCardSlipModalProps> = ({
               />
 
               <div className="text-center pt-2 pb-3 border-b border-slate-200">
-                <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500">
+                <div className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full inline-block border border-indigo-200 mb-1">
+                  KATEGORI MSSR (MAJLIS SUKAN SEKOLAH RENDAH)
+                </div>
+                <div className="text-xs uppercase tracking-wider font-bold text-slate-500">
                   KEJOHANAN OLAHRAGA TAHUNAN SEKOLAH
                 </div>
                 <div className="text-base font-black text-slate-900 mt-0.5">
@@ -151,7 +154,7 @@ export const PrintableCardSlipModal: React.FC<PrintableCardSlipModalProps> = ({
 
               {/* Event Info Box */}
               <div className="my-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="text-[11px] text-slate-500 uppercase font-semibold">Acara Dipertandingkan</div>
+                <div className="text-[11px] text-slate-500 uppercase font-semibold">Acara Dipertandingkan (MSSR)</div>
                 <div className="text-sm font-black text-indigo-950 mt-0.5">{pendaftaran.acaraNama}</div>
                 <div className="flex items-center justify-between text-[11px] text-slate-600 mt-1">
                   <span>Jenis: <strong>Acara Berkumpulan</strong></span>
@@ -176,8 +179,14 @@ export const PrintableCardSlipModal: React.FC<PrintableCardSlipModalProps> = ({
                       </span>
                       <div>
                         <div className="font-bold text-slate-900">{peserta.nama}</div>
-                        <div className="text-[10px] text-slate-500">
-                          {peserta.kelas} • ID: {peserta.muridId} • {peserta.jantina}
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                          <span>{peserta.kelas}</span>
+                          <span>•</span>
+                          <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-1 rounded">
+                            ID: {peserta.idPeserta || peserta.muridId}
+                          </span>
+                          <span>•</span>
+                          <span>{peserta.jantina}</span>
                         </div>
                       </div>
                     </div>
@@ -203,7 +212,7 @@ export const PrintableCardSlipModal: React.FC<PrintableCardSlipModalProps> = ({
               {/* Footer reference */}
               <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[9px] text-slate-400 font-mono">
                 <span>REF: {pendaftaran.id}</span>
-                <span>STATUS: DISAHKAN</span>
+                <span>STATUS: DISAHKAN (MSSR)</span>
               </div>
             </div>
           ) : (
@@ -219,7 +228,10 @@ export const PrintableCardSlipModal: React.FC<PrintableCardSlipModalProps> = ({
               />
 
               <div className="text-center pt-2 pb-3 border-b border-slate-200">
-                <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500">
+                <div className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full inline-block border border-indigo-200 mb-1">
+                  KATEGORI MSSR
+                </div>
+                <div className="text-xs uppercase tracking-wider font-bold text-slate-500">
                   KEJOHANAN OLAHRAGA TAHUNAN SEKOLAH
                 </div>
                 <div className="text-base font-black text-slate-900 mt-0.5">
@@ -245,8 +257,10 @@ export const PrintableCardSlipModal: React.FC<PrintableCardSlipModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-2 mt-3 text-xs text-left bg-white p-2.5 rounded-lg border border-slate-200">
                   <div>
-                    <span className="text-[10px] text-slate-400 block">ID Murid:</span>
-                    <strong className="font-mono text-slate-800">{activePeserta.muridId}</strong>
+                    <span className="text-[10px] text-slate-400 block">ID Peserta (MSSR):</span>
+                    <strong className="font-mono text-indigo-700 font-extrabold text-sm">
+                      {activePeserta.idPeserta || activePeserta.muridId}
+                    </strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block">Jantina:</span>
@@ -258,7 +272,9 @@ export const PrintableCardSlipModal: React.FC<PrintableCardSlipModalProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block">Tahun:</span>
-                    <strong className="text-slate-800">Tahun {activePeserta.tahun}</strong>
+                    <strong className="text-slate-800">
+                      {activePeserta.tahun === 0 ? 'Pra Sekolah' : `Tahun ${activePeserta.tahun}`}
+                    </strong>
                   </div>
                 </div>
               </div>

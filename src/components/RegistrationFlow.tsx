@@ -18,12 +18,15 @@ import {
   Star,
   Check,
   Layers,
-  Calendar
+  Calendar,
+  Plus,
+  X
 } from 'lucide-react';
 import { AcaraSukan, Murid, PendaftaranAcara, PesertaPendaftaran, RumahSukan } from '../types';
-import { SENARAI_RUMAH, SENARAI_RUMAH_KEYS } from '../data/constants';
+import { SENARAI_RUMAH, SENARAI_RUMAH_KEYS, SENARAI_KELAS_PRA, SENARAI_ALIRAN_KELAS } from '../data/constants';
 import { StorageService } from '../services/storageService';
 import { PrintableCardSlipModal } from './PrintableCardSlipModal';
+import { getOrGeneratePesertaId } from '../utils/athleteIdGenerator';
 
 interface RegistrationFlowProps {
   muridList: Murid[];
@@ -56,13 +59,16 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [lastSavedReg, setLastSavedReg] = useState<PendaftaranAcara | null>(null);
   const [showSlipModal, setShowSlipModal] = useState<boolean>(false);
+  const [showAddStudentModal, setShowAddStudentModal] = useState<boolean>(false);
+  const [inlineNama, setInlineNama] = useState<string>('');
+  const [inlineJantina, setInlineJantina] = useState<'Lelaki' | 'Perempuan'>('Lelaki');
 
   // Helper function to assign weight starting strictly from Tahun 1 to Tahun 6:
   // Tahun 1 (weight 1) -> Tahun 2 (weight 2) -> Tahun 3 (weight 3) -> Tahun 4 (weight 4) -> Tahun 5 (weight 5) -> Tahun 6 (weight 6) -> Padang (weight 7) -> Pra Sekolah (weight 8)
   const getYearOrderWeight = (ev: AcaraSukan): number => {
+    if (ev.kategori === 'Padang') return 7;
     const minT = Math.min(...ev.tahunKelayakan);
     if (minT >= 1 && minT <= 6) return minT;
-    if (ev.kategori === 'Padang') return 7;
     if (minT === 0) return 8; // Pra Sekolah
     return 9;
   };
@@ -133,57 +139,57 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     }[] = [
       {
         key: 'tahun-1',
-        title: 'Tahun 1: Sukaneka Tahap 1',
+        title: 'Tahun 1: Sukaneka Tahap 1 (Kategori MSSR)',
         badgeText: 'Tahun 1 (6 Murid: 5 Pemain + 1 Simpanan)',
         colorClass: 'border-amber-300 bg-amber-50/50 text-amber-900',
         items: [],
       },
       {
         key: 'tahun-2',
-        title: 'Tahun 2: Sukaneka Tahap 1',
+        title: 'Tahun 2: Sukaneka Tahap 1 (Kategori MSSR)',
         badgeText: 'Tahun 2 (6 Murid: 5 Pemain + 1 Simpanan)',
         colorClass: 'border-amber-300 bg-amber-50/50 text-amber-900',
         items: [],
       },
       {
         key: 'tahun-3',
-        title: 'Tahun 3: Acara Balapan',
+        title: 'Tahun 3: Acara Balapan (Kategori MSSR Bawah 9)',
         badgeText: 'Tahun 3 (60m & 80m)',
         colorClass: 'border-blue-300 bg-blue-50/50 text-blue-900',
         items: [],
       },
       {
         key: 'tahun-4',
-        title: 'Tahun 4: Acara Balapan',
+        title: 'Tahun 4: Acara Balapan (Kategori MSSR Bawah 10)',
         badgeText: 'Tahun 4 (100m & 4x100m)',
         colorClass: 'border-emerald-300 bg-emerald-50/50 text-emerald-900',
         items: [],
       },
       {
         key: 'tahun-5',
-        title: 'Tahun 5: Acara Balapan',
+        title: 'Tahun 5: Acara Balapan (Kategori MSSR Bawah 11)',
         badgeText: 'Tahun 5 (100m, 200m & 4x100m)',
         colorClass: 'border-purple-300 bg-purple-50/50 text-purple-900',
         items: [],
       },
       {
         key: 'tahun-6',
-        title: 'Tahun 6: Acara Balapan',
+        title: 'Tahun 6: Acara Balapan (Kategori MSSR Bawah 12)',
         badgeText: 'Tahun 6 (100m, 200m & 4x100m)',
         colorClass: 'border-rose-300 bg-rose-50/50 text-rose-900',
         items: [],
       },
       {
         key: 'padang',
-        title: 'Acara Padang & Terbuka',
-        badgeText: 'Tahun 4 - 6 (Lompat Jauh, Lontar Peluru, Tarik Tali)',
+        title: 'Acara Padang & Terbuka (Kategori MSSR: Tahun 3, 4 & 5 Sahaja)',
+        badgeText: 'Tahun 3 - 5 Sahaja (Lompat Jauh, Lontar Peluru, Tarik Tali)',
         colorClass: 'border-teal-300 bg-teal-50/50 text-teal-900',
         items: [],
       },
       {
         key: 'pra-sekolah',
-        title: 'Pra Sekolah (07:30)',
-        badgeText: 'Pra Sekolah (Acara Terbuka 6 Murid)',
+        title: 'Pra Sekolah (07:30 - Kategori MSSR Pra Sekolah)',
+        badgeText: 'Pra Sekolah (Acara Terbuka 6 Murid: Pra Cekal, Pra Dinamik, dll.)',
         colorClass: 'border-indigo-300 bg-indigo-50/50 text-indigo-900',
         items: [],
       },
@@ -225,6 +231,21 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
 
     // Extract unique classes that belong to eligible years from student records
     const kelasSet = new Set<string>();
+
+    // For Pra Sekolah (0), ensure standard preschool classes are included
+    if (eligibleYears.has(0)) {
+      SENARAI_KELAS_PRA.forEach((k) => kelasSet.add(k));
+    }
+
+    // Pastikan kelas standard sekolah (Arif, Bestari, Cekal, Dinamik, Efisien, Fleksibel) sentiasa tersedia bagi tahun berkaitan
+    eligibleYears.forEach((yr) => {
+      if (yr >= 1 && yr <= 6) {
+        SENARAI_ALIRAN_KELAS.forEach((aliran) => {
+          kelasSet.add(`${yr} ${aliran}`);
+        });
+      }
+    });
+
     muridList.forEach((m) => {
       if (eligibleYears.has(Number(m.tahun))) {
         kelasSet.add(m.kelas);
@@ -312,9 +333,39 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   const handleToggleStudent = (studentId: string) => {
     if (!selectedAcara) return;
 
-    if (selectedAcara.jenis === 'Individu') {
-      setSelectedPesertaIds([studentId]);
-      setSimpananIdSet(new Set());
+    const isPadang = selectedAcara.kategori === 'Padang';
+
+    if (isPadang) {
+      // Acara Padang: Pastikan ada Pemain Utama dan Pemain Simpanan murid (Maksimum 2 murid)
+      if (selectedPesertaIds.includes(studentId)) {
+        const next = selectedPesertaIds.filter((id) => id !== studentId);
+        setSelectedPesertaIds(next);
+        const nextSimpanan = new Set(simpananIdSet);
+        nextSimpanan.delete(studentId);
+        setSimpananIdSet(nextSimpanan);
+      } else {
+        if (selectedPesertaIds.length >= 2) {
+          alert('Acara Padang membenarkan 1 Pemain Utama dan 1 Pemain Simpanan (Maksimum 2 murid). Sila buang salah seorang pilihan terdahulu jika ingin menukar murid.');
+          return;
+        }
+        const next = [...selectedPesertaIds, studentId];
+        setSelectedPesertaIds(next);
+
+        // Murid kedua secara automatik ditetapkan sebagai Pemain Simpanan
+        if (next.length === 2) {
+          const nextSimpanan = new Set(simpananIdSet);
+          nextSimpanan.add(studentId);
+          setSimpananIdSet(nextSimpanan);
+        }
+      }
+    } else if (selectedAcara.jenis === 'Individu') {
+      if (selectedPesertaIds.includes(studentId)) {
+        setSelectedPesertaIds([]);
+        setSimpananIdSet(new Set());
+      } else {
+        setSelectedPesertaIds([studentId]);
+        setSimpananIdSet(new Set());
+      }
     } else {
       const maxMembers = selectedAcara.bilanganAhli;
       if (selectedPesertaIds.includes(studentId)) {
@@ -342,6 +393,18 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   };
 
   const handleToggleSimpanan = (studentId: string) => {
+    if (selectedAcara?.kategori === 'Padang') {
+      // Bagi Acara Padang: Tukar peranan murid antara Pemain Utama dan Pemain Simpanan
+      const nextSimpanan = new Set<string>();
+      if (!simpananIdSet.has(studentId)) {
+        nextSimpanan.add(studentId);
+      } else {
+        const otherId = selectedPesertaIds.find((id) => id !== studentId);
+        if (otherId) nextSimpanan.add(otherId);
+      }
+      setSimpananIdSet(nextSimpanan);
+      return;
+    }
     const nextSimpanan = new Set(simpananIdSet);
     if (nextSimpanan.has(studentId)) {
       nextSimpanan.delete(studentId);
@@ -376,15 +439,32 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       return;
     }
 
-    // Auto-fill full student info based on uploaded list
+    // Ketetapan Acara Padang: Pastikan ada Pemain Utama dan Pemain Simpanan murid
+    if (selectedAcara.kategori === 'Padang' && selectedPesertaIds.length < 2) {
+      alert(
+        'Ketetapan Acara Padang: Sila pastikan ada Pemain Utama dan Pemain Simpanan murid (Jumlah 2 orang murid). Sila pilih seorang lagi murid sebagai pemain simpanan sebelum menghantar pendaftaran.'
+      );
+      return;
+    }
+
+    // Auto-fill full student info based on uploaded list and auto-assign official Athlete ID
     const pesertaData: PesertaPendaftaran[] = [];
+    const currentBatchAssignedIds = new Map<string, string>();
+
     selectedPesertaIds.forEach((id, index) => {
       const student = muridList.find((m) => m.id === id);
       if (student) {
         let peranan = 'Peserta Utama';
         const isSimpanan = simpananIdSet.has(id);
 
-        if (selectedAcara.jenis === 'Berkumpulan') {
+        if (selectedAcara.kategori === 'Padang') {
+          // Bagi Acara Padang: Tetapkan Pemain Utama dan Pemain Simpanan
+          if (isSimpanan || (selectedPesertaIds.length > 1 && index === 1 && !simpananIdSet.has(selectedPesertaIds[0]))) {
+            peranan = 'Pemain Simpanan';
+          } else {
+            peranan = 'Pemain Utama';
+          }
+        } else if (selectedAcara.jenis === 'Berkumpulan') {
           if (selectedAcara.bilanganAhli === 6) {
             if (isSimpanan || index === 5) {
               peranan = 'Pemain Simpanan (Simpanan)';
@@ -392,19 +472,36 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               peranan = `Pemain Utama ${index + 1}`;
             }
           } else {
-            peranan = `Pelari ${index + 1}`;
+            if (isSimpanan || (selectedAcara.bilanganAhli === 5 && index === 4)) {
+              peranan = 'Pelari Simpanan';
+            } else {
+              peranan = `Pelari ${index + 1}`;
+            }
           }
         }
 
+        // Auto-assign athlete ID for this selected participant based on house and year
+        const officialIdPeserta = getOrGeneratePesertaId(
+          student,
+          pendaftaranList,
+          currentBatchAssignedIds
+        );
+
+        const isMarkedSimpanan =
+          selectedAcara.kategori === 'Padang'
+            ? peranan === 'Pemain Simpanan'
+            : isSimpanan || (selectedAcara.bilanganAhli === 6 && index === 5);
+
         pesertaData.push({
-          muridId: student.id,
+          muridId: officialIdPeserta, // Official athlete ID (cth: M-3001, PRA-M01)
+          idPeserta: officialIdPeserta,
           nama: student.nama,
           tahun: student.tahun,
           kelas: student.kelas,
           jantina: student.jantina,
           rumahSukan: student.rumahSukan,
           peranan,
-          isSimpanan: isSimpanan || (selectedAcara.bilanganAhli === 6 && index === 5),
+          isSimpanan: isMarkedSimpanan,
         });
       }
     });
@@ -418,9 +515,9 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     });
     setLastSavedReg(savedReg);
 
-    const namaMuridDipilih = pesertaData.map((p) => p.nama).join(', ');
+    const ringkasanMurid = pesertaData.map((p) => `${p.nama} [${p.muridId}]`).join(', ');
     setSuccessMessage(
-      `Pendaftaran berjaya disimpan! ${pesertaData.length} murid (${namaMuridDipilih}) telah didaftarkan dalam "${selectedAcara.nama}" untuk Rumah ${selectedRumah}.`
+      `Pendaftaran berjaya disimpan! ${pesertaData.length} peserta (${ringkasanMurid}) telah didaftarkan dalam "${selectedAcara.nama}" untuk Rumah ${selectedRumah} dengan ID Peserta MSSR dijana automatik.`
     );
 
     setSelectedPesertaIds([]);
@@ -801,7 +898,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   }`}
                 >
                   <span>Tahun {th}</span>
-                  {isSukanekaYear && <span className="text-[10px] opacity-75">(Sukaneka)</span>}
+                  {isSukanekaYear && <span className="text-[10px] opacity-75">(Sukaneka & 60m)</span>}
                   <span
                     className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                       isSelected ? 'bg-white/20 text-white' : 'bg-white text-slate-600'
@@ -823,7 +920,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              Acara Padang (T4 - T6)
+              Acara Padang (T3 - T5)
             </button>
 
             {/* Pra Sekolah */}
@@ -1043,7 +1140,11 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
 
                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-200/50 text-[11px] text-slate-600">
                       <span>
-                        {acara.jenis === 'Berkumpulan' ? (
+                        {acara.kategori === 'Padang' ? (
+                          <strong className="text-amber-800">
+                            Padang (1 Utama + 1 Simpanan)
+                          </strong>
+                        ) : acara.jenis === 'Berkumpulan' ? (
                           <strong className="text-amber-800">
                             {acara.bilanganAhli === 6 ? '6 Murid (5 Pemain + 1 Simpanan)' : `Kumpulan (${acara.bilanganAhli} orang)`}
                           </strong>
@@ -1199,16 +1300,28 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               </p>
             </div>
 
-            {/* Carian Nama Murid */}
-            <div className="relative ml-9 md:ml-0">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Cari nama atau ID murid..."
-                value={carianMurid}
-                onChange={(e) => setCarianMurid(e.target.value)}
-                className="pl-9 pr-4 py-2 text-xs bg-slate-100 rounded-xl border border-transparent focus:bg-white focus:border-indigo-400 focus:outline-none w-64"
-              />
+            {/* Carian & Tambah Murid Baharu Pantas */}
+            <div className="flex items-center gap-2 flex-wrap ml-9 md:ml-0">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari nama atau ID murid..."
+                  value={carianMurid}
+                  onChange={(e) => setCarianMurid(e.target.value)}
+                  className="pl-9 pr-4 py-2 text-xs bg-slate-100 rounded-xl border border-transparent focus:bg-white focus:border-indigo-400 focus:outline-none w-52 sm:w-64"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAddStudentModal(true)}
+                className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap"
+                title="Daftar murid baharu untuk rumah sukan dan kelas ini"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Daftar Murid</span>
+              </button>
             </div>
           </div>
 
@@ -1235,6 +1348,27 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
             </div>
           )}
 
+          {/* Acara Padang: Banner Wajib Pemain Utama & Pemain Simpanan */}
+          {selectedAcara.kategori === 'Padang' && (
+            <div className="bg-gradient-to-r from-amber-50 via-amber-100/70 to-emerald-50 border border-amber-300 p-4 rounded-xl text-xs space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-amber-950 flex items-center gap-2">
+                  <span className="p-1 rounded-md bg-amber-500 text-white font-bold text-[10px]">PADANG</span>
+                  <span className="text-sm">
+                    Ketetapan Acara Padang: 1 Pemain Utama + 1 Pemain Simpanan Murid
+                  </span>
+                </div>
+                <span className="font-bold text-amber-900 bg-white px-3 py-1 rounded-full border border-amber-300 shadow-2xs">
+                  {selectedPesertaIds.length} / 2 Murid Dipilih
+                </span>
+              </div>
+              <p className="text-amber-950 leading-relaxed">
+                * <strong>Pemain Utama:</strong> Murid utama yang bertanding di padang kejohanan.<br />
+                * <strong>Pemain Simpanan:</strong> Murid simpanan jika berlaku kecederaan/halangan. Anda boleh klik butang <strong>[Tukar Peranan]</strong> pada kad murid untuk melaraskan status utama/simpanan.
+              </p>
+            </div>
+          )}
+
           {/* Prompt requirement #11:
               Jika tiada murid yang sepadan, paparkan:
               “Tiada murid yang memenuhi rumah, kelas dan kategori yang dipilih.” */}
@@ -1245,8 +1379,16 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                 Tiada murid yang memenuhi rumah, kelas dan kategori yang dipilih.
               </div>
               <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                Tiada rekod murid {selectedAcara.kategoriJantina} daripada Rumah {selectedRumah} dalam kelas {selectedKelas}. Sila pilih kelas lain atau tambahkan murid dalam fail pentadbir.
+                Tiada rekod murid {selectedAcara.kategoriJantina} daripada Rumah {selectedRumah} dalam {selectedKelas === 'SEMUA_KELAS' ? 'Semua Kelas' : `kelas ${selectedKelas}`}.
               </p>
+              <button
+                type="button"
+                onClick={() => setShowAddStudentModal(true)}
+                className="mt-4 cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Daftar Murid Baharu ke Rumah {selectedRumah} ({selectedKelas})</span>
+              </button>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1255,7 +1397,11 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   Dijumpai: <strong className="text-slate-800">{candidateStudents.length}</strong> murid yang layak
                 </span>
                 <span>
-                  {selectedAcara.jenis === 'Berkumpulan' ? (
+                  {selectedAcara.kategori === 'Padang' ? (
+                    <span className="font-bold text-amber-800 bg-amber-100/80 px-2.5 py-0.5 rounded-full border border-amber-300">
+                      Pilih 2 murid (1 Pemain Utama + 1 Simpanan)
+                    </span>
+                  ) : selectedAcara.jenis === 'Berkumpulan' ? (
                     <span className="font-semibold text-amber-700">
                       Pilih sehingga {selectedAcara.bilanganAhli} peserta
                     </span>
@@ -1287,7 +1433,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                         {/* Checkbox or Radio selection */}
                         <div className="pt-0.5">
                           <input
-                            type={selectedAcara.jenis === 'Berkumpulan' ? 'checkbox' : 'radio'}
+                            type={selectedAcara.jenis === 'Berkumpulan' || selectedAcara.kategori === 'Padang' ? 'checkbox' : 'radio'}
                             name="selectedMurid"
                             id={`murid-${murid.id}`}
                             disabled={isRegisteredInThisEvent}
@@ -1312,11 +1458,17 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                             )}
                           </div>
 
-                          {/* Requirement 9: Auto-fill details (ID, Tahun, Kelas, Jantina, Rumah) */}
+                          {/* Auto-fill details (ID Peserta hanya untuk yang dipilih, Kelas, Tahun, Jantina, Rumah) */}
                           <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500 flex-wrap">
-                            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] font-semibold text-slate-700">
-                              ID: {murid.id}
-                            </span>
+                            {isSelected ? (
+                              <span className="font-mono bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded text-[11px] font-bold">
+                                ID Peserta MSSR: {getOrGeneratePesertaId(murid, pendaftaranList)}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium italic">
+                                ID Murid dijana automatik jika dipilih
+                              </span>
+                            )}
                             <span>•</span>
                             <span className="font-medium text-slate-700">{murid.kelas}</span>
                             <span>•</span>
@@ -1345,6 +1497,32 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                               >
                                 <Star className={`w-3 h-3 ${isSimpanan ? 'text-amber-600 fill-amber-500' : 'text-slate-400'}`} />
                                 <span>{isSimpanan ? 'Pemain Simpanan (Simpanan)' : 'Pemain Utama (Klik untuk Simpanan)'}</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Acara Padang role toggle button: Pemain Utama vs Pemain Simpanan */}
+                          {isSelected && selectedAcara.kategori === 'Padang' && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleToggleSimpanan(murid.id);
+                                }}
+                                className={`cursor-pointer px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                                  isSimpanan || (selectedIndex === 1 && !simpananIdSet.has(selectedPesertaIds[0]))
+                                    ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs hover:bg-amber-200'
+                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300 shadow-2xs hover:bg-emerald-200'
+                                }`}
+                              >
+                                <span>
+                                  {isSimpanan || (selectedIndex === 1 && !simpananIdSet.has(selectedPesertaIds[0]))
+                                    ? '★ Pemain Simpanan'
+                                    : '✔ Pemain Utama'}
+                                </span>
+                                <span className="text-[10px] font-normal text-slate-600">(Klik untuk tukar peranan)</span>
                               </button>
                             </div>
                           )}
@@ -1382,6 +1560,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   const m = muridList.find((stud) => stud.id === id);
                   if (!m) return null;
                   const isSimp = simpananIdSet.has(id) || (selectedAcara.bilanganAhli === 6 && index === 5);
+                  const assignedId = getOrGeneratePesertaId(m, pendaftaranList);
 
                   return (
                     <div
@@ -1392,6 +1571,9 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                         {index + 1}
                       </span>
                       <span className="font-bold text-slate-800">{m.nama}</span>
+                      <span className="font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                        {assignedId}
+                      </span>
                       <span className="text-[10px] text-slate-500">({m.kelas})</span>
                       {selectedAcara.bilanganAhli === 6 && (
                         <span
@@ -1400,6 +1582,20 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                           }`}
                         >
                           {isSimp ? 'Simpanan' : 'Utama'}
+                        </span>
+                      )}
+
+                      {selectedAcara.kategori === 'Padang' && (
+                        <span
+                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                            isSimp || (index === 1 && !simpananIdSet.has(selectedPesertaIds[0]))
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          }`}
+                        >
+                          {isSimp || (index === 1 && !simpananIdSet.has(selectedPesertaIds[0]))
+                            ? 'Pemain Simpanan'
+                            : 'Pemain Utama'}
                         </span>
                       )}
                     </div>
@@ -1455,6 +1651,175 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
           pendaftaran={lastSavedReg}
           onClose={() => setShowSlipModal(false)}
         />
+      )}
+
+      {/* Modal Daftar Murid Baharu Secara Pantas */}
+      {showAddStudentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-indigo-700 to-indigo-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-200" />
+                <div>
+                  <h3 className="font-bold text-base">Daftar Murid Baharu</h3>
+                  <p className="text-[11px] text-indigo-200">
+                    Daftar ke Rumah {selectedRumah} & Terus Pilih Acara
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddStudentModal(false)}
+                className="p-1 rounded-lg hover:bg-white/20 text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!inlineNama.trim()) {
+                  alert('Sila masukkan nama penuh murid.');
+                  return;
+                }
+                const targetKelas =
+                  selectedKelas && selectedKelas !== 'SEMUA_KELAS'
+                    ? selectedKelas
+                    : selectedAcara && selectedAcara.tahunKelayakan[0] === 0
+                    ? 'Pra Arif'
+                    : `${selectedAcara?.tahunKelayakan[0] || 1} Arif`;
+                const targetTahun =
+                  selectedAcara && selectedAcara.tahunKelayakan.length > 0
+                    ? selectedAcara.tahunKelayakan[0]
+                    : 1;
+                const targetJantina =
+                  selectedAcara?.kategoriJantina === 'Perempuan'
+                    ? 'Perempuan'
+                    : selectedAcara?.kategoriJantina === 'Lelaki'
+                    ? 'Lelaki'
+                    : inlineJantina;
+                const housePrefix = selectedRumah ? selectedRumah[0].toUpperCase() : 'M';
+                const newId = `M-${housePrefix}${targetTahun === 0 ? 'P' : targetTahun}-${Date.now().toString().slice(-4)}`;
+
+                const newStudent: Murid = {
+                  id: newId,
+                  nama: inlineNama.trim(),
+                  tahun: targetTahun,
+                  kelas: targetKelas,
+                  jantina: targetJantina,
+                  rumahSukan: selectedRumah || 'Merah',
+                };
+
+                StorageService.upsertMuridBatch([newStudent]);
+                onSuccess();
+
+                // Auto-pilih murid baru bagi acara semasa
+                if (selectedAcara?.kategori === 'Padang') {
+                  if (selectedPesertaIds.length < 2) {
+                    const next = [...selectedPesertaIds, newId];
+                    setSelectedPesertaIds(next);
+                    if (next.length === 2) {
+                      const nextSimp = new Set(simpananIdSet);
+                      nextSimp.add(newId);
+                      setSimpananIdSet(nextSimp);
+                    }
+                  }
+                } else if (selectedAcara?.jenis === 'Individu') {
+                  setSelectedPesertaIds([newId]);
+                } else {
+                  if (selectedPesertaIds.length < (selectedAcara?.bilanganAhli || 6)) {
+                    setSelectedPesertaIds([...selectedPesertaIds, newId]);
+                  }
+                }
+
+                setInlineNama('');
+                setShowAddStudentModal(false);
+              }}
+              className="p-6 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Nama Penuh Murid <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Muhammad Danish bin Halim"
+                  value={inlineNama}
+                  onChange={(e) => setInlineNama(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Rumah Sukan</label>
+                  <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-800">
+                    Rumah {selectedRumah}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Kelas</label>
+                  <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-800">
+                    {selectedKelas && selectedKelas !== 'SEMUA_KELAS'
+                      ? selectedKelas
+                      : `${selectedAcara?.tahunKelayakan[0] || 1} Arif`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Tahun</label>
+                  <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-800">
+                    {selectedAcara?.tahunKelayakan[0] === 0 ? 'Pra Sekolah' : `Tahun ${selectedAcara?.tahunKelayakan[0]}`}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Jantina</label>
+                  {selectedAcara?.kategoriJantina === 'Terbuka' ? (
+                    <select
+                      value={inlineJantina}
+                      onChange={(e) => setInlineJantina(e.target.value as 'Lelaki' | 'Perempuan')}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none"
+                    >
+                      <option value="Lelaki">Lelaki</option>
+                      <option value="Perempuan">Perempuan</option>
+                    </select>
+                  ) : (
+                    <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-800">
+                      {selectedAcara?.kategoriJantina}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 italic bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                Murid yang didaftarkan akan terus dipilih bagi acara ini dan dimasukkan ke dalam senarai Rumah {selectedRumah}.
+              </p>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowAddStudentModal(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-100 font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer shadow-xs"
+                >
+                  Simpan & Pilih Murid
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

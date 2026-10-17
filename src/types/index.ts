@@ -16,10 +16,11 @@ export interface RumahInfo {
 }
 
 export interface Murid {
-  id: string; // ID Murid
+  id: string; // ID Rujukan Murid (Dalaman / Tidak wajib diisi dalam fail)
+  idPeserta?: string; // ID Peserta Acara rasmi (cth: M-3001, PRA-M01 - hanya dijana automatik untuk peserta acara)
   nama: string; // Nama Murid
-  tahun: number; // Tahun (1 - 6)
-  kelas: string; // Kelas (contoh: 3 Fleksibel, 3 Cemerlang)
+  tahun: number; // Tahun (0 untuk Pra Sekolah, 1 - 6)
+  kelas: string; // Kelas (contoh: Pra Cekal, Pra Dinamik, 3 Fleksibel)
   jantina: Jantina; // Lelaki atau Perempuan
   rumahSukan: RumahSukan; // Merah, Kuning, Hijau, Biru
   tarikhDicipta?: string;
@@ -36,6 +37,7 @@ export interface AcaraSukan {
   kod: string;
   kategori: KategoriAcara;
   kategoriJantina: KategoriJantinaAcara;
+  kategoriMSSR?: string; // Kategori MSSR (cth: MSSR L12, MSSR P12, MSSR Tahap 1)
   tahunKelayakan: number[]; // 0 untuk Pra Sekolah, 1, 2, 3, 4, 5, 6
   jenis: JenisAcara;
   bilanganAhli: number; // 1 untuk Individu; 4 untuk 4x100m, 6 untuk Sukaneka (5 pemain + 1 simpanan)
@@ -47,6 +49,7 @@ export interface AcaraSukan {
 
 export interface PesertaPendaftaran {
   muridId: string;
+  idPeserta?: string; // ID Murid / No. Peserta rasmi yang dijana secara automatik (cth: M-3001, PRA-M01)
   nama: string;
   tahun: number;
   kelas: string;

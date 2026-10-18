@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -8,6 +8,13 @@ const app = initializeApp(firebaseConfig);
 // CRITICAL: Must pass firebaseConfig.firestoreDatabaseId as specified in Firebase skill
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
+// Authenticate anonymously so all Firestore operations have valid auth credentials
+if (typeof window !== 'undefined') {
+  signInAnonymously(auth).catch((err) => {
+    console.warn('Anonymous auth note:', err?.message || err);
+  });
+}
 
 // Test Firestore connection on boot as mandated by the Firebase skill
 export async function testFirestoreConnection(): Promise<boolean> {

@@ -20,12 +20,14 @@ import {
   Layers,
   Calendar,
   Plus,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 import { AcaraSukan, Murid, PendaftaranAcara, PesertaPendaftaran, RumahSukan } from '../types';
 import { SENARAI_RUMAH, SENARAI_RUMAH_KEYS, SENARAI_KELAS_PRA, SENARAI_ALIRAN_KELAS } from '../data/constants';
 import { StorageService } from '../services/storageService';
 import { PrintableCardSlipModal } from './PrintableCardSlipModal';
+import { OfficialMssrFormModal } from './OfficialMssrFormModal';
 import { getOrGeneratePesertaId } from '../utils/athleteIdGenerator';
 
 interface RegistrationFlowProps {
@@ -59,6 +61,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [lastSavedReg, setLastSavedReg] = useState<PendaftaranAcara | null>(null);
   const [showSlipModal, setShowSlipModal] = useState<boolean>(false);
+  const [showOfficialMssrModal, setShowOfficialMssrModal] = useState<boolean>(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState<boolean>(false);
   const [inlineNama, setInlineNama] = useState<string>('');
   const [inlineJantina, setInlineJantina] = useState<'Lelaki' | 'Perempuan'>('Lelaki');
@@ -427,7 +430,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     setSuccessMessage(null);
   };
 
-  const handleSubmitRegistration = (e: React.FormEvent) => {
+  const handleSubmitRegistration = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRumah || !selectedAcara || !selectedKelas) {
       alert('Sila lengkapkan semua urutan pemilihan.');
@@ -493,7 +496,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
             : isSimpanan || (selectedAcara.bilanganAhli === 6 && index === 5);
 
         pesertaData.push({
-          muridId: officialIdPeserta, // Official athlete ID (cth: M-3001, PRA-M01)
+          muridId: student.id,
           idPeserta: officialIdPeserta,
           nama: student.nama,
           tahun: student.tahun,
@@ -506,18 +509,18 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       }
     });
 
-    const savedReg = StorageService.tambahPendaftaran({
+    const savedReg = await StorageService.tambahPendaftaran({
       acaraId: selectedAcara.id,
       acaraNama: selectedAcara.nama,
       rumahSukan: selectedRumah,
       peserta: pesertaData,
-      catatan: catatan.trim() || undefined,
+      catatan: catatan.trim() || '',
     });
     setLastSavedReg(savedReg);
 
-    const ringkasanMurid = pesertaData.map((p) => `${p.nama} [${p.muridId}]`).join(', ');
+    const ringkasanMurid = pesertaData.map((p) => `${p.nama} (${p.idPeserta || p.muridId})`).join(', ');
     setSuccessMessage(
-      `Pendaftaran berjaya disimpan! ${pesertaData.length} peserta (${ringkasanMurid}) telah didaftarkan dalam "${selectedAcara.nama}" untuk Rumah ${selectedRumah} dengan ID Peserta MSSR dijana automatik.`
+      `Pendaftaran berjaya disimpan! ${pesertaData.length} peserta (${ringkasanMurid}) telah didaftarkan dalam "${selectedAcara.nama}" untuk Rumah ${selectedRumah} dan disegerakkan ke pangkalan data.`
     );
 
     setSelectedPesertaIds([]);
@@ -706,36 +709,133 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
         </div>
       </div>
 
-      {/* Success Notification Alert */}
-      {successMessage && (
-        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-start justify-between gap-3 shadow-sm animate-fadeIn">
-          <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
-            <div>
-              <div className="font-bold text-sm">Pendaftaran Disimpan!</div>
-              <p className="text-sm text-emerald-800 mt-0.5">{successMessage}</p>
+      {/* Maklumat Borang Pendaftaran Terjana Serta-Merta Selepas Guru Mengisi Peserta */}
+      {successMessage && lastSavedReg && (
+        <div className="bg-white border-2 border-emerald-400 text-slate-800 p-5 rounded-2xl shadow-lg animate-fadeIn space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-emerald-200">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-sm">
+                <CheckCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-base text-emerald-950">
+                  Borang Pendaftaran Acara Berjaya Dijana!
+                </h4>
+                <p className="text-xs text-emerald-800">
+                  Maklumat peserta telah direkodkan ke dalam pangkalan data dan disegerakkan secara masa nyata.
+                </p>
+              </div>
+            </div>
 
-              {lastSavedReg && (
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowSlipModal(true)}
-                    className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Cetak Slip (Format Kad) Murid Ini Sekarang</span>
-                  </button>
-                </div>
-              )}
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-bold px-3 py-1 rounded-full border ${SENARAI_RUMAH[lastSavedReg.rumahSukan].badgeClass}`}>
+                Rumah {lastSavedReg.rumahSukan}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSuccessMessage(null)}
+                className="text-xs font-semibold px-2.5 py-1 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer transition-colors"
+              >
+                Tutup Ringkasan
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setSuccessMessage(null)}
-            className="text-emerald-700 hover:text-emerald-900 font-semibold text-xs cursor-pointer px-2 py-1 self-start sm:self-auto"
-          >
-            Tutup
-          </button>
+
+          {/* Kad Maklumat Terperinci Borang Pendaftaran */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+            <div>
+              <span className="text-slate-500 block text-[11px] font-semibold uppercase">Acara Sukan:</span>
+              <span className="font-bold text-slate-900 text-sm">{lastSavedReg.acaraNama}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[11px] font-semibold uppercase">ID Rekod Pendaftaran:</span>
+              <span className="font-mono font-bold text-indigo-700">{lastSavedReg.id}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[11px] font-semibold uppercase">Tarikh & Masa Daftar:</span>
+              <span className="font-mono text-slate-700">{new Date(lastSavedReg.tarikhDaftar).toLocaleString('ms-MY')}</span>
+            </div>
+          </div>
+
+          {/* Senarai Peserta Terpilih dalam Borang */}
+          <div>
+            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Senarai Peserta Didaftarkan ({lastSavedReg.peserta.length} Murid):</span>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-100 text-slate-700 font-bold">
+                  <tr>
+                    <th className="py-2 px-3">Bil</th>
+                    <th className="py-2 px-3">No. Peserta MSSR</th>
+                    <th className="py-2 px-3">Nama Penuh Murid</th>
+                    <th className="py-2 px-3">Kelas / Tahun</th>
+                    <th className="py-2 px-3">Jantina</th>
+                    <th className="py-2 px-3">Peranan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {lastSavedReg.peserta.map((p, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="py-2 px-3 font-mono font-bold text-slate-400">{idx + 1}</td>
+                      <td className="py-2 px-3 font-mono font-bold text-indigo-700">{p.idPeserta || p.muridId}</td>
+                      <td className="py-2 px-3 font-bold text-slate-900">{p.nama}</td>
+                      <td className="py-2 px-3 text-slate-600">{p.kelas} ({p.tahun === 0 ? 'Pra' : `T${p.tahun}`})</td>
+                      <td className="py-2 px-3 text-slate-600">{p.jantina}</td>
+                      <td className="py-2 px-3">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          p.isSimpanan || (p.peranan && p.peranan.toLowerCase().includes('simpanan'))
+                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        }`}>
+                          {p.peranan || (lastSavedReg.peserta.length > 1 ? `Pelari ${idx + 1}` : 'Peserta Utama')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Tindakan Jana Borang & Kad Slip */}
+          <div className="pt-2 flex items-center justify-between gap-3 flex-wrap border-t border-slate-200">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Butang Utama: Muat Turun Borang Rasmi PDF Landskap */}
+              <button
+                type="button"
+                onClick={() => setShowOfficialMssrModal(true)}
+                className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-md shadow-red-600/25 transition-all active:scale-95"
+                title="Buka dan muat turun Borang Penyertaan Rasmi MSSR dalam format PDF Landskap (A4)"
+              >
+                <FileText className="w-4 h-4 text-white" />
+                <span>Borang Rasmi MSSR (PDF Landskap)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSlipModal(true)}
+                className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all active:scale-95"
+                title="Cetak slip format kad rasmi untuk murid ini"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Slip Kad Peserta Ini</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                resetAllSteps();
+                setSuccessMessage(null);
+              }}
+              className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Daftar Acara Seterusnya</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -1650,6 +1750,17 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
         <PrintableCardSlipModal
           pendaftaran={lastSavedReg}
           onClose={() => setShowSlipModal(false)}
+        />
+      )}
+
+      {/* Borang Rasmi Kejohanan MSSR Modal */}
+      {showOfficialMssrModal && (
+        <OfficialMssrFormModal
+          isOpen={showOfficialMssrModal}
+          onClose={() => setShowOfficialMssrModal(false)}
+          pendaftaranList={pendaftaranList}
+          acaraList={acaraList}
+          muridList={muridList}
         />
       )}
 

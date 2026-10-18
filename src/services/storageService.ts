@@ -14,14 +14,23 @@ import { auth, db, testFirestoreConnection } from './firebase';
 const KEY_MURID = 'sukan_sekolah_murid_v6';
 const KEY_PENDAFTARAN = 'sukan_sekolah_pendaftaran_v3';
 const KEY_ACARA = 'sukan_sekolah_acara_v5';
-const KEY_DELETED_MURID_IDS = 'sukan_sk_tudan_deleted_ids_v3';
+const KEY_DELETED_MURID_IDS = 'sukan_sk_tudan_deleted_ids_v4';
 
 // In-memory cache for ultra-fast zero-lag access
 let cachedMuridList: Murid[] | null = null;
 let cachedAcaraList: AcaraSukan[] | null = null;
 let cachedPendaftaranList: PendaftaranAcara[] | null = null;
 
-// Tombstone pengesanan murid yang telah dipadam agar tidak timbul semula
+/**
+ * Pembersihan objek sebelum disimpan ke Firestore
+ * Membuang sebarang nilai 'undefined' yang menyebabkan ralat Firestore
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return data;
+  return JSON.parse(JSON.stringify(data));
+}
+
+// Tombstone pengesanan murid yang telah dipadam secara jelas oleh pengguna
 export function getDeletedMuridIds(): Set<string> {
   try {
     const data = localStorage.getItem(KEY_DELETED_MURID_IDS);
@@ -106,7 +115,7 @@ export function handleFirestoreError(
     operationType,
     path,
   };
-  console.warn('Firestore Warning: ', JSON.stringify(errInfo));
+  console.warn('Firestore Notice: ', JSON.stringify(errInfo));
   return errInfo;
 }
 
@@ -149,28 +158,6 @@ if (typeof window !== 'undefined') {
       listeners.forEach((l) => l('acara'));
     }
   });
-
-  // Pembersihan awal automatik: Padam semua data contoh lama agar hanya murid baru yang didaftarkan akan muncul mengikut Rumah Sukan
-  const PURGE_FLAG = 'sukan_sk_tudan_purged_mock_v3';
-  if (!localStorage.getItem(PURGE_FLAG)) {
-    localStorage.setItem(PURGE_FLAG, 'true');
-    ['sukan_sekolah_murid', 'sukan_sekolah_murid_v1', 'sukan_sekolah_murid_v2', 'sukan_sekolah_murid_v3', 'sukan_sekolah_murid_v4', 'sukan_sekolah_murid_v5'].forEach((k) => {
-      localStorage.removeItem(k);
-    });
-    localStorage.setItem(KEY_MURID, JSON.stringify([]));
-    cachedMuridList = [];
-    try {
-      getDocs(collection(db, 'murid')).then((snap) => {
-        if (!snap.empty) {
-          const batch = writeBatch(db);
-          snap.forEach((d) => batch.delete(d.ref));
-          batch.commit().catch(console.warn);
-        }
-      }).catch(console.warn);
-    } catch {
-      // ignore
-    }
-  }
 }
 
 // Debounced sync notifications to prevent UI freezing and lag
@@ -200,16 +187,17 @@ export function initFirebaseSync() {
     console.warn('Firestore test connection failed:', err)
   );
 
-  // Listen to remote 'murid' collection
+  // 1. Listen to remote 'murid' collection
   try {
     const muridCol = collection(db, 'murid');
     onSnapshot(
       muridCol,
       (snapshot) => {
-        const deletedIds = getDeletedMuridIds();
         if (snapshot.empty) {
-          if (cachedMuridList && cachedMuridList.length > 0) {
-            StorageService.saveMuridList([], true, false);
+          // Jika Firestore kosong tetapi cache tempatan ada rekod murid, muat naik ke Firestore
+          const localMurid = StorageService.getMuridList();
+          if (localMurid.length > 0) {
+            StorageService.syncLocalToFirestore(localMurid);
           }
           return;
         }
@@ -218,18 +206,14 @@ export function initFirebaseSync() {
         snapshot.forEach((docSnap) => {
           const m = docSnap.data() as Murid;
           if (m && m.id && m.nama) {
-            const cleanKey = m.id.trim().toUpperCase();
-            const docKey = docSnap.id.trim().toUpperCase();
-            // Jika ID murid ini telah dipadamkan oleh pengguna, pastikan ia TIDAK dimasukkan dan padam dari Firestore
-            if (deletedIds.has(cleanKey) || deletedIds.has(docKey)) {
-              deleteDoc(docSnap.ref).catch(console.warn);
-            } else {
-              remoteList.push(m);
-            }
+            remoteList.push(m);
           }
         });
 
-        // Elakkan gelung kemas kini sekiranya tiada perubahan (menghentikan lagging & pembekuan)
+        // Susun murid mengikut abjad nama
+        remoteList.sort((a, b) => a.nama.localeCompare(b.nama, 'ms', { sensitivity: 'base' }));
+
+        // Semak sama ada data remote berbeza daripada cache tempatan
         const currentLocal = StorageService.getMuridList();
         const hasChange =
           remoteList.length !== currentLocal.length ||
@@ -256,15 +240,17 @@ export function initFirebaseSync() {
     console.warn('Failed to attach murid snapshot listener:', error);
   }
 
-  // Listen to remote 'pendaftaran' collection
+  // 2. Listen to remote 'pendaftaran' collection
   try {
     const pendaftaranCol = collection(db, 'pendaftaran');
     onSnapshot(
       pendaftaranCol,
       (snapshot) => {
         if (snapshot.empty) {
-          if (cachedPendaftaranList && cachedPendaftaranList.length > 0) {
-            StorageService.savePendaftaranList([], true, false);
+          // Jika Firestore kosong tetapi ada pendaftaran tempatan, segerakkan ke Firestore
+          const localRegs = StorageService.getPendaftaranList();
+          if (localRegs.length > 0) {
+            StorageService.syncPendaftaranToFirestore(localRegs);
           }
           return;
         }
@@ -277,13 +263,24 @@ export function initFirebaseSync() {
           }
         });
 
-        // Elakkan gelung kemas kini sekiranya tiada perubahan
+        // Susun mengikut pendaftaran terkini di bahagian atas
+        remoteList.sort((a, b) => {
+          const timeA = new Date(a.tarikhDaftar || 0).getTime();
+          const timeB = new Date(b.tarikhDaftar || 0).getTime();
+          return timeB - timeA;
+        });
+
+        // Semak sama ada data pendaftaran berbeza
         const currentLocal = StorageService.getPendaftaranList();
         const hasChange =
           remoteList.length !== currentLocal.length ||
           remoteList.some((rp, idx) => {
             const lp = currentLocal[idx];
-            return !lp || lp.id !== rp.id || lp.peserta?.length !== rp.peserta?.length;
+            return (
+              !lp ||
+              lp.id !== rp.id ||
+              lp.peserta?.length !== rp.peserta?.length
+            );
           });
 
         if (hasChange) {
@@ -318,8 +315,7 @@ export const StorageService = {
         cachedMuridList = [];
         return [];
       }
-      const deletedIds = getDeletedMuridIds();
-      const list = (JSON.parse(data) as Murid[]).filter((m) => !deletedIds.has(m.id));
+      const list = JSON.parse(data) as Murid[];
       cachedMuridList = list;
       return list;
     } catch (e) {
@@ -330,17 +326,15 @@ export const StorageService = {
   },
 
   saveMuridList(list: Murid[], triggerNotify = true, syncToRemote = true): void {
-    const deletedIds = getDeletedMuridIds();
-    const cleanList = list.filter((m) => !deletedIds.has(m.id));
-    cachedMuridList = cleanList;
+    cachedMuridList = list;
 
     try {
-      localStorage.setItem(KEY_MURID, JSON.stringify(cleanList));
+      localStorage.setItem(KEY_MURID, JSON.stringify(list));
       if (triggerNotify) {
         notifySync('murid');
       }
       if (syncToRemote) {
-        this.syncLocalToFirestore(cleanList);
+        this.syncLocalToFirestore(list);
       }
     } catch (e) {
       console.error('Gagal menyimpan senarai murid', e);
@@ -349,14 +343,13 @@ export const StorageService = {
 
   async syncLocalToFirestore(list: Murid[]): Promise<void> {
     try {
-      // Chunk writes by 450 to stay within Firestore 500-op limit
       for (let i = 0; i < list.length; i += 450) {
         const chunk = list.slice(i, i + 450);
         const batch = writeBatch(db);
         for (const m of chunk) {
           const safeId = m.id.replace(/[^a-zA-Z0-9_-]/g, '_');
           const ref = doc(db, 'murid', safeId);
-          batch.set(ref, m, { merge: true });
+          batch.set(ref, sanitizeForFirestore(m), { merge: true });
         }
         await batch.commit();
       }
@@ -372,7 +365,6 @@ export const StorageService = {
     const seen = new Set<string>();
     const formattedList: Murid[] = [];
 
-    // Ensure strictly unique IDs across all items so none are lost
     for (let i = 0; i < newList.length; i++) {
       const item = newList[i];
       let cleanId = item.id.trim();
@@ -385,7 +377,6 @@ export const StorageService = {
       }
       seen.add(upperKey);
 
-      // Pastikan ID ini tidak terhalang oleh tombstone lama
       unmarkDeletedMuridId(cleanId);
 
       formattedList.push({
@@ -400,15 +391,14 @@ export const StorageService = {
       });
     }
 
-    // 1. Immediately save to local storage and update React components
+    // 1. Simpan serta merta ke localStorage dan cache
     this.saveMuridList(formattedList, true, false);
 
-    // 2. Sync with Firestore: remove documents not present in the new replacement list
+    // 2. Segerakkan ke Firestore
     try {
       const snap = await getDocs(collection(db, 'murid'));
       const newSafeIds = new Set(formattedList.map((m) => m.id.replace(/[^a-zA-Z0-9_-]/g, '_')));
 
-      // Delete obsolete documents from Firestore
       const obsoleteDocs = snap.docs.filter((d) => !newSafeIds.has(d.id));
       for (let i = 0; i < obsoleteDocs.length; i += 450) {
         const chunk = obsoleteDocs.slice(i, i + 450);
@@ -417,7 +407,6 @@ export const StorageService = {
         await deleteBatch.commit();
       }
 
-      // Write all new documents to Firestore
       await this.syncLocalToFirestore(formattedList);
     } catch (err) {
       console.warn('Sync replace to Firestore notice:', err);
@@ -475,16 +464,14 @@ export const StorageService = {
   },
 
   deleteMurid(id: string): void {
-    // 1. Masukkan ID ke dalam senarai tombstone supaya tidak pernah timbul semula
     addDeletedMuridIds([id]);
 
-    // 2. Padam daripada senarai murid tempatan & cache
     const current = this.getMuridList();
     const filtered = current.filter((m) => m.id !== id);
     cachedMuridList = filtered;
     this.saveMuridList(filtered, true, false);
 
-    // 3. Wajib keluarkan murid ini daripada SEMUA pendaftaran acara yang ada
+    // Keluarkan murid ini daripada semua pendaftaran acara
     const allRegs = this.getPendaftaranList();
     let regUpdated = false;
     const cleanRegs: PendaftaranAcara[] = [];
@@ -497,7 +484,6 @@ export const StorageService = {
         if (bakiPeserta.length > 0) {
           cleanRegs.push({ ...reg, peserta: bakiPeserta });
         } else {
-          // Jika tiada lagi peserta dalam acara ini, padam terus dokumen pendaftaran
           try {
             const safeRegId = reg.id.replace(/[^a-zA-Z0-9_-]/g, '_');
             deleteDoc(doc(db, 'pendaftaran', safeRegId)).catch(console.warn);
@@ -512,7 +498,7 @@ export const StorageService = {
       this.savePendaftaranList(cleanRegs, true, true);
     }
 
-    // 4. Padam daripada Firestore serta merta tanpa lagging muat turun seluruh koleksi
+    // Padam daripada Firestore
     try {
       const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
       deleteDoc(doc(db, 'murid', safeId)).catch(console.warn);
@@ -536,7 +522,7 @@ export const StorageService = {
     cachedMuridList = filtered;
     this.saveMuridList(filtered, true, false);
 
-    // Keluarkan semua murid yang dipilih daripada senarai pendaftaran
+    // Keluarkan murid daripada senarai pendaftaran
     const allRegs = this.getPendaftaranList();
     let regUpdated = false;
     const cleanRegs: PendaftaranAcara[] = [];
@@ -563,7 +549,6 @@ export const StorageService = {
       this.savePendaftaranList(cleanRegs, true, true);
     }
 
-    // Delete in batches from Firestore
     try {
       const batch = writeBatch(db);
       ids.forEach((id) => {
@@ -583,25 +568,12 @@ export const StorageService = {
   },
 
   clearAllMurid(): void {
-    const current = this.getMuridList();
-    addDeletedMuridIds(current.map((m) => m.id));
     cachedMuridList = [];
     this.saveMuridList([], true, false);
 
-    // Padam semua pendaftaran juga supaya tiada rekod lama berlegar
-    this.savePendaftaranList([], true, false);
-
-    // Delete all documents in Firestore murid collection & pendaftaran
+    // Padam dokumen murid dalam Firestore
     try {
       getDocs(collection(db, 'murid')).then((snap) => {
-        if (!snap.empty) {
-          const batch = writeBatch(db);
-          snap.forEach((d) => batch.delete(d.ref));
-          batch.commit().catch(console.warn);
-        }
-      }).catch(console.warn);
-
-      getDocs(collection(db, 'pendaftaran')).then((snap) => {
         if (!snap.empty) {
           const batch = writeBatch(db);
           snap.forEach((d) => batch.delete(d.ref));
@@ -742,40 +714,80 @@ export const StorageService = {
         notifySync('pendaftaran');
       }
       if (syncToRemote) {
-        try {
-          const batch = writeBatch(db);
-          list.slice(0, 100).forEach((p) => {
-            const safeId = p.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-            batch.set(doc(db, 'pendaftaran', safeId), p, { merge: true });
-          });
-          batch.commit().catch(console.warn);
-        } catch (err) {
-          console.warn('Error batch syncing pendaftaran to Firestore:', err);
-        }
+        this.syncPendaftaranToFirestore(list);
       }
     } catch (e) {
       console.error('Gagal menyimpan pendaftaran', e);
     }
   },
 
-  tambahPendaftaran(pendaftaran: Omit<PendaftaranAcara, 'id' | 'tarikhDaftar'>): PendaftaranAcara {
+  async syncPendaftaranToFirestore(list: PendaftaranAcara[]): Promise<void> {
+    try {
+      for (let i = 0; i < list.length; i += 450) {
+        const chunk = list.slice(i, i + 450);
+        const batch = writeBatch(db);
+        for (const p of chunk) {
+          const safeId = p.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const ref = doc(db, 'pendaftaran', safeId);
+          batch.set(ref, sanitizeForFirestore(p), { merge: true });
+        }
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn('Error batch syncing pendaftaran to Firestore:', err);
+    }
+  },
+
+  async tambahPendaftaran(pendaftaran: Omit<PendaftaranAcara, 'id' | 'tarikhDaftar'>): Promise<PendaftaranAcara> {
     const list = this.getPendaftaranList();
     const newEntry: PendaftaranAcara = {
       ...pendaftaran,
       id: `REG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       tarikhDaftar: new Date().toISOString(),
     };
+
+    // Pastikan sebarang peserta yang didaftarkan juga direkodkan ke dalam muridList
+    if (newEntry.peserta && newEntry.peserta.length > 0) {
+      const currentMurid = this.getMuridList();
+      const muridMap = new Map(currentMurid.map((m) => [m.id, m]));
+      let hasNewMurid = false;
+      const newMuridToAdd: Murid[] = [];
+
+      newEntry.peserta.forEach((p) => {
+        if (!muridMap.has(p.muridId)) {
+          hasNewMurid = true;
+          newMuridToAdd.push({
+            id: p.muridId,
+            idPeserta: p.idPeserta || p.muridId,
+            nama: p.nama,
+            tahun: p.tahun,
+            kelas: p.kelas,
+            jantina: p.jantina,
+            rumahSukan: p.rumahSukan,
+            tarikhDicipta: new Date().toISOString(),
+            tarikhKemaskini: new Date().toISOString(),
+          });
+        }
+      });
+
+      if (hasNewMurid && newMuridToAdd.length > 0) {
+        this.upsertMuridBatch(newMuridToAdd);
+      }
+    }
+
+    // Masukkan ke bahagian atas senarai pendaftaran tempatan
     list.unshift(newEntry);
     this.savePendaftaranList(list, true, false);
 
-    // Save directly to Firestore with error handling
+    // Simpan terus ke Firestore dengan pembersihan data
     try {
       const safeId = newEntry.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-      setDoc(doc(db, 'pendaftaran', safeId), newEntry).catch((error) => {
-        handleFirestoreError(error, OperationType.WRITE, `pendaftaran/${safeId}`);
-      });
+      const cleanData = sanitizeForFirestore(newEntry);
+      await setDoc(doc(db, 'pendaftaran', safeId), cleanData);
+      console.log('Pendaftaran berjaya disimpan ke Firestore:', safeId);
     } catch (error) {
-      console.warn('Failed to write pendaftaran to Firestore directly:', error);
+      console.error('Ralat simpan pendaftaran ke Firestore:', error);
+      handleFirestoreError(error, OperationType.WRITE, `pendaftaran/${newEntry.id}`);
     }
 
     return newEntry;
@@ -787,7 +799,7 @@ export const StorageService = {
     cachedPendaftaranList = filtered;
     this.savePendaftaranList(filtered, true, false);
 
-    // Also delete from Firestore instantly without full collection query
+    // Padam daripada Firestore
     try {
       const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
       deleteDoc(doc(db, 'pendaftaran', safeId)).catch((error) => {
@@ -801,4 +813,3 @@ export const StorageService = {
     }
   },
 };
-

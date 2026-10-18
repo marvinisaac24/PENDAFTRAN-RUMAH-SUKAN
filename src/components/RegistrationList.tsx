@@ -16,23 +16,26 @@ import {
   FileText,
   Download
 } from 'lucide-react';
-import { AcaraSukan, PendaftaranAcara, RumahSukan } from '../types';
+import { AcaraSukan, Murid, PendaftaranAcara, RumahSukan } from '../types';
 import { SENARAI_RUMAH, SENARAI_RUMAH_KEYS } from '../data/constants';
 import { StorageService } from '../services/storageService';
 import { PrintableCardSlipModal } from './PrintableCardSlipModal';
 import { PrintAllSummaryModal } from './PrintAllSummaryModal';
+import { OfficialMssrFormModal } from './OfficialMssrFormModal';
 import { exportMasterSportsWorkbook, exportSingleHouseReport } from '../utils/sportsReportExporter';
 import * as XLSX from 'xlsx';
 
 interface RegistrationListProps {
   pendaftaranList: PendaftaranAcara[];
   acaraList?: AcaraSukan[];
+  muridList?: Murid[];
   onRefresh: () => void;
 }
 
 export const RegistrationList: React.FC<RegistrationListProps> = ({
   pendaftaranList,
   acaraList,
+  muridList,
   onRefresh,
 }) => {
   const [filterRumah, setFilterRumah] = useState<string>('semua');
@@ -40,8 +43,10 @@ export const RegistrationList: React.FC<RegistrationListProps> = ({
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [activeSlipModal, setActiveSlipModal] = useState<PendaftaranAcara | null>(null);
   const [showPrintAllModal, setShowPrintAllModal] = useState<boolean>(false);
+  const [showOfficialMssrModal, setShowOfficialMssrModal] = useState<boolean>(false);
 
   const effectiveAcaraList = acaraList && acaraList.length > 0 ? acaraList : StorageService.getAcaraList();
+  const effectiveMuridList = muridList && muridList.length > 0 ? muridList : StorageService.getMuridList();
 
   const filteredList = pendaftaranList.filter((reg) => {
     if (filterRumah !== 'semua' && reg.rumahSukan !== filterRumah) return false;
@@ -162,6 +167,18 @@ export const RegistrationList: React.FC<RegistrationListProps> = ({
                 <span>Kad</span>
               </button>
             </div>
+
+            {/* Butang Borang Rasmi MSSR (PDF Landskap) */}
+            <button
+              type="button"
+              onClick={() => setShowOfficialMssrModal(true)}
+              disabled={pendaftaranList.length === 0}
+              className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all shadow-md shadow-red-600/20 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              title="Jana dan muat turun Borang Penyertaan Rasmi MSSR (10 Acara Balapan & Padang) dalam format PDF Landskap"
+            >
+              <FileText className="w-4 h-4 text-white" />
+              <span>Borang Rasmi MSSR (PDF Landskap)</span>
+            </button>
 
             {/* Butang Muat Turun Senarai Lengkap Acara & 4 Rumah Sukan */}
             <button
@@ -563,6 +580,17 @@ export const RegistrationList: React.FC<RegistrationListProps> = ({
         pendaftaranList={pendaftaranList}
         acaraList={effectiveAcaraList}
       />
+
+      {/* Borang Rasmi Kejohanan MSSR Modal */}
+      {showOfficialMssrModal && (
+        <OfficialMssrFormModal
+          isOpen={showOfficialMssrModal}
+          onClose={() => setShowOfficialMssrModal(false)}
+          pendaftaranList={pendaftaranList}
+          acaraList={effectiveAcaraList}
+          muridList={effectiveMuridList}
+        />
+      )}
     </div>
   );
 };

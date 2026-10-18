@@ -23,6 +23,8 @@ export interface Murid {
   kelas: string; // Kelas (contoh: Pra Cekal, Pra Dinamik, 3 Fleksibel)
   jantina: Jantina; // Lelaki atau Perempuan
   rumahSukan: RumahSukan; // Merah, Kuning, Hijau, Biru
+  tarikhLahir?: string; // Tarikh Lahir (cth: 15/03/2014)
+  noSijilLahir?: string; // No. Sijil Lahir / No. MyKid (cth: SB123456 / 140315-13-1234)
   tarikhDicipta?: string;
   tarikhKemaskini?: string;
 }
@@ -55,6 +57,8 @@ export interface PesertaPendaftaran {
   kelas: string;
   jantina: Jantina;
   rumahSukan: RumahSukan;
+  tarikhLahir?: string;
+  noSijilLahir?: string;
   peranan?: string; // cth: 'Pemain 1', 'Pemain Simpanan', 'Pelari 1'
   isSimpanan?: boolean;
 }

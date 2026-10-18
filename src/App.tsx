@@ -205,6 +205,7 @@ export default function App() {
           <RegistrationList
             pendaftaranList={pendaftaranList}
             acaraList={acaraList}
+            muridList={muridList}
             onRefresh={refreshAllData}
           />
         )}

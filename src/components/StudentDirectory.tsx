@@ -14,7 +14,8 @@ import {
   Square,
   AlertTriangle,
   X,
-  ShieldAlert
+  ShieldAlert,
+  Edit3
 } from 'lucide-react';
 import { Jantina, Murid, RumahSukan } from '../types';
 import { SENARAI_RUMAH, SENARAI_RUMAH_KEYS, SENARAI_KELAS_PRA } from '../data/constants';
@@ -57,6 +58,16 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
   const [newKelas, setNewKelas] = useState<string>('3 Fleksibel');
   const [newJantina, setNewJantina] = useState<Jantina>('Lelaki');
   const [newRumah, setNewRumah] = useState<RumahSukan>('Merah');
+
+  // Edit Student Modal State
+  const [editingMurid, setEditingMurid] = useState<Murid | null>(null);
+  const [editNama, setEditNama] = useState<string>('');
+  const [editNoPengenalan, setEditNoPengenalan] = useState<string>('');
+  const [editTarikhLahir, setEditTarikhLahir] = useState<string>('');
+  const [editTahun, setEditTahun] = useState<number>(3);
+  const [editKelas, setEditKelas] = useState<string>('');
+  const [editJantina, setEditJantina] = useState<Jantina>('Lelaki');
+  const [editRumah, setEditRumah] = useState<RumahSukan>('Merah');
 
   // Senarai pendaftaran berkesan tanpa overhead capaian storan
   const effectivePendaftaranList = useMemo(() => {
@@ -228,6 +239,60 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
     setNotification({
       type: 'success',
       message: `Murid "${newNama.trim()}" berjaya didaftarkan ke Rumah ${newRumah}! ID Murid rasmi akan diberikan secara automatik apabila dipilih menyertai acara.`,
+    });
+  };
+
+  const handleStartEdit = (m: Murid) => {
+    setEditingMurid(m);
+    setEditNama(m.nama);
+    setEditNoPengenalan(m.noPengenalan || m.noSijilLahir || '');
+    setEditTarikhLahir(m.tarikhLahir || '');
+    setEditTahun(m.tahun);
+    setEditKelas(m.kelas);
+    setEditJantina(m.jantina);
+    setEditRumah(m.rumahSukan);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMurid || !editNama.trim() || !editKelas.trim()) return;
+
+    let dob = editTarikhLahir.trim();
+    if (!dob && editNoPengenalan.trim()) {
+      const digits = editNoPengenalan.replace(/\D/g, '');
+      if (digits.length >= 6) {
+        const yy = parseInt(digits.slice(0, 2), 10);
+        const mm = digits.slice(2, 4);
+        const dd = digits.slice(4, 6);
+        const mNum = parseInt(mm, 10);
+        const dNum = parseInt(dd, 10);
+        if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+          const fullYear = yy <= 30 ? 2000 + yy : 1900 + yy;
+          dob = `${dd}/${mm}/${fullYear}`;
+        }
+      }
+    }
+
+    StorageService.upsertMuridBatch([
+      {
+        id: editingMurid.id,
+        nama: editNama.trim(),
+        tahun: editTahun,
+        kelas: editKelas.trim(),
+        jantina: editJantina,
+        rumahSukan: editRumah,
+        noPengenalan: editNoPengenalan.trim() || undefined,
+        noSijilLahir: editNoPengenalan.trim() || undefined,
+        tarikhLahir: dob || undefined,
+        idPeserta: editingMurid.idPeserta,
+      },
+    ]);
+
+    setEditingMurid(null);
+    onRefresh();
+    setNotification({
+      type: 'success',
+      message: `Maklumat murid "${editNama.trim()}" berjaya dikemaskini!`,
     });
   };
 
@@ -636,14 +701,24 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSingle(murid.id, murid.nama)}
-                          className="cursor-pointer text-slate-400 hover:text-rose-600 transition-colors p-1"
-                          title="Padam murid individu"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(murid)}
+                            className="cursor-pointer text-slate-400 hover:text-indigo-600 transition-colors p-1"
+                            title="Kemaskini maklumat murid (No. Pengenalan / Tarikh Lahir)"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSingle(murid.id, murid.nama)}
+                            className="cursor-pointer text-slate-400 hover:text-rose-600 transition-colors p-1"
+                            title="Padam murid individu"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -912,6 +987,177 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                   className="cursor-pointer px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md"
                 >
                   Simpan Murid
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Modal Kemaskini Murid */}
+      {editingMurid && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden animate-fadeIn">
+            <div className="p-6 bg-gradient-to-r from-indigo-700 to-indigo-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Edit3 className="w-5 h-5 text-indigo-100" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Kemaskini Maklumat Murid</h3>
+                  <p className="text-xs text-indigo-100 mt-0.5">
+                    ID Rujukan: {editingMurid.id}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingMurid(null)}
+                className="cursor-pointer text-white/80 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nama Penuh Murid *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Muhammad Ali bin Ahmad"
+                  value={editNama}
+                  onChange={(e) => setEditNama(e.target.value)}
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    No. Pengenalan (MyKid / IC)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 140512-13-1234"
+                    value={editNoPengenalan}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditNoPengenalan(val);
+                      // Auto extract tarikh lahir jika kosong
+                      if (!editTarikhLahir) {
+                        const digits = val.replace(/\D/g, '');
+                        if (digits.length >= 6) {
+                          const yy = parseInt(digits.slice(0, 2), 10);
+                          const mm = digits.slice(2, 4);
+                          const dd = digits.slice(4, 6);
+                          const mNum = parseInt(mm, 10);
+                          const dNum = parseInt(dd, 10);
+                          if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+                            const fullYear = yy <= 30 ? 2000 + yy : 1900 + yy;
+                            setEditTarikhLahir(`${dd}/${mm}/${fullYear}`);
+                          }
+                        }
+                      }
+                    }}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tarikh Lahir
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="DD/MM/YYYY"
+                    value={editTarikhLahir}
+                    onChange={(e) => setEditTarikhLahir(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tahun *
+                  </label>
+                  <select
+                    value={editTahun}
+                    onChange={(e) => setEditTahun(Number(e.target.value))}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
+                  >
+                    <option value={0}>Pra Sekolah</option>
+                    {[1, 2, 3, 4, 5, 6].map((t) => (
+                      <option key={t} value={t}>
+                        Tahun {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Kelas *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editKelas}
+                    onChange={(e) => setEditKelas(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Jantina *
+                  </label>
+                  <select
+                    value={editJantina}
+                    onChange={(e) => setEditJantina(e.target.value as Jantina)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
+                  >
+                    <option value="Lelaki">Lelaki</option>
+                    <option value="Perempuan">Perempuan</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Rumah Sukan *
+                  </label>
+                  <select
+                    value={editRumah}
+                    onChange={(e) => setEditRumah(e.target.value as RumahSukan)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
+                  >
+                    {SENARAI_RUMAH_KEYS.map((r) => (
+                      <option key={r} value={r}>
+                        Rumah {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingMurid(null)}
+                  className="cursor-pointer px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 rounded-xl"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="cursor-pointer px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md"
+                >
+                  Kemaskini Murid
                 </button>
               </div>
             </form>

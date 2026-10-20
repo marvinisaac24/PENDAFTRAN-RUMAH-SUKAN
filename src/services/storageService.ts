@@ -255,7 +255,8 @@ export function initFirebaseSync() {
               jantina: raw.jantina || 'Lelaki',
               rumahSukan: raw.rumahSukan || 'Merah',
               idPeserta: raw.idPeserta || cleanId,
-              noSijilLahir: raw.noSijilLahir || '',
+              noPengenalan: raw.noPengenalan || raw.noSijilLahir || '',
+              noSijilLahir: raw.noSijilLahir || raw.noPengenalan || '',
               tarikhLahir: raw.tarikhLahir || '',
               tarikhDicipta: raw.tarikhDicipta || new Date().toISOString(),
               tarikhKemaskini: raw.tarikhKemaskini || new Date().toISOString(),
@@ -283,7 +284,14 @@ export function initFirebaseSync() {
           mergedList.length !== currentLocal.length ||
           mergedList.some((rm, idx) => {
             const lm = currentLocal[idx];
-            return !lm || lm.id !== rm.id || lm.nama !== rm.nama || lm.rumahSukan !== rm.rumahSukan;
+            return (
+              !lm ||
+              lm.id !== rm.id ||
+              lm.nama !== rm.nama ||
+              lm.rumahSukan !== rm.rumahSukan ||
+              lm.noPengenalan !== rm.noPengenalan ||
+              lm.tarikhLahir !== rm.tarikhLahir
+            );
           });
 
         if (hasChange) {
@@ -468,6 +476,10 @@ export const StorageService = {
         kelas: item.kelas.trim(),
         jantina: item.jantina,
         rumahSukan: item.rumahSukan,
+        noPengenalan: item.noPengenalan || item.noSijilLahir || undefined,
+        noSijilLahir: item.noSijilLahir || item.noPengenalan || undefined,
+        tarikhLahir: item.tarikhLahir || undefined,
+        idPeserta: item.idPeserta || undefined,
         tarikhDicipta: now,
         tarikhKemaskini: now,
       });
@@ -517,26 +529,34 @@ export const StorageService = {
 
       const existing = map.get(key);
       if (existing) {
-        const updated = {
+        const updated: Murid = {
           ...existing,
           nama: item.nama.trim(),
           tahun: item.tahun,
           kelas: item.kelas.trim(),
           jantina: item.jantina,
           rumahSukan: item.rumahSukan,
+          noPengenalan: item.noPengenalan || existing.noPengenalan || undefined,
+          noSijilLahir: item.noSijilLahir || item.noPengenalan || existing.noSijilLahir || undefined,
+          tarikhLahir: item.tarikhLahir || existing.tarikhLahir || undefined,
+          idPeserta: item.idPeserta || existing.idPeserta || undefined,
           tarikhKemaskini: now,
         };
         map.set(key, updated);
         modifiedStudents.push(updated);
         dikemaskini++;
       } else {
-        const created = {
+        const created: Murid = {
           id: cleanId,
           nama: item.nama.trim(),
           tahun: item.tahun,
           kelas: item.kelas.trim(),
           jantina: item.jantina,
           rumahSukan: item.rumahSukan,
+          noPengenalan: item.noPengenalan || item.noSijilLahir || undefined,
+          noSijilLahir: item.noSijilLahir || item.noPengenalan || undefined,
+          tarikhLahir: item.tarikhLahir || undefined,
+          idPeserta: item.idPeserta || undefined,
           tarikhDicipta: now,
           tarikhKemaskini: now,
         };

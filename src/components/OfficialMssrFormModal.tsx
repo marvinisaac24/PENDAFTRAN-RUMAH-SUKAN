@@ -201,12 +201,13 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 1. Peta murid berdasarkan ID dan Nama untuk carian pantas O(1) tanpa lengah
+  // 1. Peta murid berdasarkan ID, No. Peserta, dan Nama untuk carian pantas O(1) tanpa lengah
   const { muridById, muridByName } = useMemo(() => {
     const byId = new Map<string, Murid>();
     const byName = new Map<string, Murid>();
     muridList.forEach((m) => {
       if (m.id) byId.set(m.id.trim().toUpperCase(), m);
+      if (m.idPeserta) byId.set(m.idPeserta.trim().toUpperCase(), m);
       if (m.nama) byName.set(m.nama.trim().toUpperCase(), m);
     });
     return { muridById: byId, muridByName: byName };
@@ -288,36 +289,41 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
           if (g !== 'SEMUA' && p.jantina !== g) return;
           if (!allowedYears.includes(p.tahun)) return;
 
-          // Padankan rekod murid daripada pangkalan data murid secara tepat melalui ID atau Nama
+          // Padankan rekod murid daripada pangkalan data murid secara tepat melalui ID, No. Peserta, atau Nama
           const student =
             (p.muridId && muridById.get(p.muridId.trim().toUpperCase())) ||
+            (p.idPeserta && muridById.get(p.idPeserta.trim().toUpperCase())) ||
             muridByName.get(p.nama.trim().toUpperCase());
-          const uniqueKey = p.muridId || p.nama.trim().toUpperCase();
+          const uniqueKey = p.muridId || p.idPeserta || p.nama.trim().toUpperCase();
 
           // 1. Ekstrak No. Pengenalan (Utamakan noPengenalan murid, p.noPengenalan, atau noSijilLahir)
           const fallbackNoPengenalan =
             student?.noPengenalan ||
-            student?.noSijilLahir ||
             p.noPengenalan ||
+            student?.noSijilLahir ||
             p.noSijilLahir ||
-            student?.id ||
-            p.muridId ||
             '';
 
-          // 2. Ekstrak Tarikh Lahir (Daripada rekod murid, MyKid/IC, atau unjuran tahun kelahiran)
+          // 2. Ekstrak Tarikh Lahir (Daripada rekod murid, pendaftaran, MyKid/IC, atau umur MSSR 2026)
           let rawTarikh =
             student?.tarikhLahir ||
             p.tarikhLahir ||
             extractDobFromIc(fallbackNoPengenalan);
 
           if (!rawTarikh) {
-            const defaultBirthYear = 2026 - (p.tahun || 1);
+            // Unjuran rasmi MSSR 2026: Murid Tahun 6 lahir 2014, Tahun 5 lahir 2015, Tahun 4 lahir 2016 dsb
+            const defaultBirthYear = 2026 - (6 + (p.tahun || 1));
             rawTarikh = `01/01/${defaultBirthYear}`;
           }
 
           const fallbackTarikhLahir = formatTarikhLahir(rawTarikh);
-          const finalNoPengenalan = manualEdits[uniqueKey]?.noSijil || fallbackNoPengenalan;
-          const finalTarikhLahir = manualEdits[uniqueKey]?.tarikhLahir || fallbackTarikhLahir;
+          const manual =
+            manualEdits[uniqueKey] ||
+            (p.muridId && manualEdits[p.muridId]) ||
+            (p.idPeserta && manualEdits[p.idPeserta]) ||
+            manualEdits[p.nama.trim().toUpperCase()];
+          const finalNoPengenalan = manual?.noSijil || fallbackNoPengenalan;
+          const finalTarikhLahir = manual?.tarikhLahir || fallbackTarikhLahir;
 
           const isSimpanan =
             p.isSimpanan ||
@@ -548,7 +554,7 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
         p.idPeserta || '',
         p.nama || '',
         p.tarikhLahir || '',
-        p.noSijilLahir || '',
+        p.noPengenalan || p.noSijilLahir || '',
         p.eventTicks['60m'] || '',
         p.eventTicks['100m'] || '',
         p.eventTicks['200m'] || '',
@@ -969,7 +975,7 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
                 <tbody>
                   {displayRows.map((row) => {
                     const p = row.data;
-                    const rowKey = p.idPeserta || `row-${row.bil}`;
+                    const rowKey = p.idPeserta || p.nama || `row-${row.bil}`;
 
                     return (
                       <tr key={row.bil} className="hover:bg-slate-50/50">
@@ -993,21 +999,23 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
                           {!row.isEmpty ? (
                             <input
                               type="text"
-                              value={p.tarikhLahir}
+                              value={p.tarikhLahir || ''}
                               onChange={(e) => handleUpdateManual(rowKey, 'tarikhLahir', e.target.value)}
                               className="w-full text-center bg-transparent border-0 focus:outline-none p-0 text-[10px]"
+                              placeholder="DD/MM/YYYY"
                             />
                           ) : null}
                         </td>
 
-                        {/* No Sijil Lahir (Boleh diedit pantas) */}
+                        {/* No. Pengenalan (Boleh diedit pantas) */}
                         <td className="border border-black py-0.5 px-1 whitespace-nowrap text-[9px]">
                           {!row.isEmpty ? (
                             <input
                               type="text"
-                              value={p.noSijilLahir}
+                              value={p.noPengenalan || p.noSijilLahir || ''}
                               onChange={(e) => handleUpdateManual(rowKey, 'noSijil', e.target.value)}
                               className="w-full text-center bg-transparent border-0 focus:outline-none p-0 text-[10px]"
+                              placeholder="No. Pengenalan"
                             />
                           ) : null}
                         </td>

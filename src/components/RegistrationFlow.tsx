@@ -2186,6 +2186,22 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                             <span>{murid.jantina}</span>
                             <span>•</span>
                             <span className="font-semibold text-slate-700">Rumah {murid.rumahSukan}</span>
+                            {(murid.noPengenalan || murid.noSijilLahir) && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-[10px]">
+                                  KP: {murid.noPengenalan || murid.noSijilLahir}
+                                </span>
+                              </>
+                            )}
+                            {murid.tarikhLahir && (
+                              <>
+                                <span>•</span>
+                                <span className="text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                                  Lahir: {murid.tarikhLahir}
+                                </span>
+                              </>
+                            )}
                           </div>
 
                           {/* Sukaneka role toggle button */}

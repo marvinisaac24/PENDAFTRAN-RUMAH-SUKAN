@@ -271,7 +271,14 @@ function parseSingleSheet(
     row.forEach((cellVal, colIdx) => {
       const fieldKey = bestNormalizedHeaderMap[colIdx];
       if (fieldKey && fieldKey !== 'bil') {
-        rowData[fieldKey] = String(cellVal ?? '').trim();
+        if (cellVal instanceof Date && !isNaN(cellVal.getTime())) {
+          const dd = String(cellVal.getDate()).padStart(2, '0');
+          const mm = String(cellVal.getMonth() + 1).padStart(2, '0');
+          const yyyy = cellVal.getFullYear();
+          rowData[fieldKey] = `${dd}/${mm}/${yyyy}`;
+        } else {
+          rowData[fieldKey] = String(cellVal ?? '').trim();
+        }
       }
     });
 
@@ -283,7 +290,32 @@ function parseSingleSheet(
     let rawJantina = rowData.jantina || '';
     let rawRumah = selectedRumahOverride || rowData.rumahSukan || sheetRumahSukanDefault || '';
     const rawNoPengenalan = rowData.noPengenalan || '';
-    const rawTarikhLahir = rowData.tarikhLahir || '';
+    let rawTarikhLahir = rowData.tarikhLahir || '';
+
+    // Auto-detect Tarikh Lahir daripada No. Pengenalan (MyKid / IC) jika tarikh kosong
+    if (!rawTarikhLahir && rawNoPengenalan) {
+      const digits = rawNoPengenalan.replace(/\D/g, '');
+      if (digits.length >= 6) {
+        const yy = parseInt(digits.slice(0, 2), 10);
+        const mm = digits.slice(2, 4);
+        const dd = digits.slice(4, 6);
+        const mNum = parseInt(mm, 10);
+        const dNum = parseInt(dd, 10);
+        if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+          const fullYear = yy <= 30 ? 2000 + yy : 1900 + yy;
+          rawTarikhLahir = `${dd}/${mm}/${fullYear}`;
+        }
+      }
+    }
+
+    // Pemformatan ISO YYYY-MM-DD ke DD/MM/YYYY jika diperlukan
+    if (rawTarikhLahir) {
+      const isoMatch = rawTarikhLahir.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+      if (isoMatch) {
+        const [, y, m, d] = isoMatch;
+        rawTarikhLahir = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+      }
+    }
 
     // If completely empty row data extracted, skip
     if (!rawId && !rawNama && !rawTahun && !rawKelas && !rawNoPengenalan) {

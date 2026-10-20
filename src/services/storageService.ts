@@ -8,14 +8,32 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { DEFAULT_ACARA, INITIAL_STUDENTS } from '../data/constants';
-import { AcaraSukan, Murid, PendaftaranAcara } from '../types';
+import { AcaraSukan, Jantina, Murid, PendaftaranAcara, RumahSukan } from '../types';
 import { auth, db, testFirestoreConnection } from './firebase';
 
-const KEY_MURID = 'sukan_sekolah_murid_v6';
-const KEY_PENDAFTARAN = 'sukan_sekolah_pendaftaran_v3';
+const KEY_MURID = 'sukan_sekolah_murid_v7';
+const KEY_PENDAFTARAN = 'sukan_sekolah_pendaftaran_v4';
 const KEY_ACARA = 'sukan_sekolah_acara_v5';
-const KEY_DELETED_MURID_IDS = 'sukan_sk_tudan_deleted_ids_v4';
-const KEY_DELETED_PENDAFTARAN_IDS = 'sukan_sk_tudan_deleted_pendaftaran_ids_v1';
+const KEY_DELETED_MURID_IDS = 'sukan_sk_tudan_deleted_ids_v5';
+const KEY_DELETED_PENDAFTARAN_IDS = 'sukan_sk_tudan_deleted_pendaftaran_ids_v2';
+
+// Purge obsolete local storage caches from earlier versions so stale data never persists
+if (typeof window !== 'undefined') {
+  try {
+    [
+      'sukan_sekolah_murid_v1',
+      'sukan_sekolah_murid_v2',
+      'sukan_sekolah_murid_v3',
+      'sukan_sekolah_murid_v4',
+      'sukan_sekolah_murid_v5',
+      'sukan_sekolah_murid_v6',
+      'sukan_sk_tudan_deleted_ids_v1',
+      'sukan_sk_tudan_deleted_ids_v2',
+      'sukan_sk_tudan_deleted_ids_v3',
+      'sukan_sk_tudan_deleted_ids_v4',
+    ].forEach((k) => localStorage.removeItem(k));
+  } catch {}
+}
 
 // In-memory cache for ultra-fast zero-lag access
 let cachedMuridList: Murid[] | null = null;
@@ -225,20 +243,19 @@ export function initFirebaseSync() {
     console.warn('Firestore test connection failed:', err)
   );
 
-  // 1. Listen to remote 'murid' collection
+  // 1. Listen to remote 'murid' collection across ALL devices in real-time
   try {
     const muridCol = collection(db, 'murid');
     onSnapshot(
       muridCol,
       (snapshot) => {
-        const deletedIds = getDeletedMuridIds();
-
+        // Jika Firestore kosong (semua murid dipadam atau belum dimuat naik), kosongkan cache pada SEMUA peranti
         if (snapshot.empty) {
-          // Jika Firestore kosong tetapi cache tempatan ada rekod murid, muat naik ke Firestore
-          const localMurid = StorageService.getMuridList();
-          if (localMurid.length > 0) {
-            StorageService.syncLocalToFirestore(localMurid);
-          }
+          cachedMuridList = [];
+          try {
+            localStorage.setItem(KEY_MURID, JSON.stringify([]));
+          } catch {}
+          notifySync('murid');
           return;
         }
 
@@ -246,14 +263,14 @@ export function initFirebaseSync() {
         snapshot.forEach((docSnap) => {
           const raw = docSnap.data() as Partial<Murid>;
           const cleanId = (raw.id || docSnap.id || '').trim();
-          if (cleanId && raw.nama && !deletedIds.has(cleanId.toUpperCase())) {
+          if (cleanId && raw.nama) {
             remoteMap.set(cleanId.toUpperCase(), {
               id: cleanId,
               nama: raw.nama,
               tahun: raw.tahun !== undefined ? Number(raw.tahun) : 1,
               kelas: raw.kelas || '',
-              jantina: raw.jantina || 'Lelaki',
-              rumahSukan: raw.rumahSukan || 'Merah',
+              jantina: (raw.jantina as Jantina) || 'Lelaki',
+              rumahSukan: (raw.rumahSukan as RumahSukan) || 'Merah',
               idPeserta: raw.idPeserta || cleanId,
               noPengenalan: raw.noPengenalan || raw.noSijilLahir || '',
               noSijilLahir: raw.noSijilLahir || raw.noPengenalan || '',
@@ -264,43 +281,14 @@ export function initFirebaseSync() {
           }
         });
 
-        // Gabungkan dengan sebarang murid tempatan yang belum selesai sync ke remote
-        const currentLocal = StorageService.getMuridList();
-        const pendingMuridToSync: Murid[] = [];
+        const remoteList = Array.from(remoteMap.values());
+        remoteList.sort((a, b) => a.nama.localeCompare(b.nama, 'ms', { sensitivity: 'base' }));
 
-        currentLocal.forEach((m) => {
-          const key = m.id.trim().toUpperCase();
-          if (!deletedIds.has(key) && !remoteMap.has(key)) {
-            remoteMap.set(key, m);
-            pendingMuridToSync.push(m);
-          }
-        });
-
-        const mergedList = Array.from(remoteMap.values());
-        mergedList.sort((a, b) => a.nama.localeCompare(b.nama, 'ms', { sensitivity: 'base' }));
-
-        // Semak sama ada perlu kemaskini memori / localStorage
-        const hasChange =
-          mergedList.length !== currentLocal.length ||
-          mergedList.some((rm, idx) => {
-            const lm = currentLocal[idx];
-            return (
-              !lm ||
-              lm.id !== rm.id ||
-              lm.nama !== rm.nama ||
-              lm.rumahSukan !== rm.rumahSukan ||
-              lm.noPengenalan !== rm.noPengenalan ||
-              lm.tarikhLahir !== rm.tarikhLahir
-            );
-          });
-
-        if (hasChange) {
-          StorageService.saveMuridList(mergedList, true, false);
-        }
-
-        if (pendingMuridToSync.length > 0) {
-          StorageService.syncLocalToFirestore(pendingMuridToSync);
-        }
+        cachedMuridList = remoteList;
+        try {
+          localStorage.setItem(KEY_MURID, JSON.stringify(remoteList));
+        } catch {}
+        notifySync('murid');
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, 'murid');
@@ -310,20 +298,18 @@ export function initFirebaseSync() {
     console.warn('Failed to attach murid snapshot listener:', error);
   }
 
-  // 2. Listen to remote 'pendaftaran' collection
+  // 2. Listen to remote 'pendaftaran' collection across ALL devices in real-time
   try {
     const pendaftaranCol = collection(db, 'pendaftaran');
     onSnapshot(
       pendaftaranCol,
       (snapshot) => {
-        const deletedRegIds = getDeletedPendaftaranIds();
-
         if (snapshot.empty) {
-          // Jika Firestore kosong tetapi ada pendaftaran tempatan, segerakkan ke Firestore
-          const localRegs = StorageService.getPendaftaranList().filter((r) => !deletedRegIds.has(r.id));
-          if (localRegs.length > 0) {
-            StorageService.syncPendaftaranToFirestore(localRegs);
-          }
+          cachedPendaftaranList = [];
+          try {
+            localStorage.setItem(KEY_PENDAFTARAN, JSON.stringify([]));
+          } catch {}
+          notifySync('pendaftaran');
           return;
         }
 
@@ -331,12 +317,12 @@ export function initFirebaseSync() {
         snapshot.forEach((docSnap) => {
           const raw = docSnap.data() as Partial<PendaftaranAcara>;
           const cleanId = (raw.id || docSnap.id || '').trim();
-          if (cleanId && raw.acaraId && Array.isArray(raw.peserta) && !deletedRegIds.has(cleanId)) {
+          if (cleanId && raw.acaraId && Array.isArray(raw.peserta)) {
             remoteMap.set(cleanId, {
               id: cleanId,
               acaraId: raw.acaraId,
               acaraNama: raw.acaraNama || '',
-              rumahSukan: raw.rumahSukan || 'Merah',
+              rumahSukan: (raw.rumahSukan as RumahSukan) || 'Merah',
               peserta: raw.peserta,
               tarikhDaftar: raw.tarikhDaftar || new Date().toISOString(),
               catatan: raw.catatan || '',
@@ -344,38 +330,18 @@ export function initFirebaseSync() {
           }
         });
 
-        // Gabungkan dengan sebarang pendaftaran tempatan yang sah dan belum dipadam
-        const currentLocal = StorageService.getPendaftaranList();
-        const pendingRegToSync: PendaftaranAcara[] = [];
-
-        currentLocal.forEach((reg) => {
-          if (!deletedRegIds.has(reg.id) && !remoteMap.has(reg.id)) {
-            remoteMap.set(reg.id, reg);
-            pendingRegToSync.push(reg);
-          }
-        });
-
-        const mergedList = Array.from(remoteMap.values());
-        mergedList.sort((a, b) => {
+        const remoteList = Array.from(remoteMap.values());
+        remoteList.sort((a, b) => {
           const timeA = new Date(a.tarikhDaftar || 0).getTime();
           const timeB = new Date(b.tarikhDaftar || 0).getTime();
           return timeB - timeA;
         });
 
-        const hasChange =
-          mergedList.length !== currentLocal.length ||
-          mergedList.some((rp, idx) => {
-            const lp = currentLocal[idx];
-            return !lp || lp.id !== rp.id || lp.peserta?.length !== rp.peserta?.length;
-          });
-
-        if (hasChange) {
-          StorageService.savePendaftaranList(mergedList, true, false);
-        }
-
-        if (pendingRegToSync.length > 0) {
-          StorageService.syncPendaftaranToFirestore(pendingRegToSync);
-        }
+        cachedPendaftaranList = remoteList;
+        try {
+          localStorage.setItem(KEY_PENDAFTARAN, JSON.stringify(remoteList));
+        } catch {}
+        notifySync('pendaftaran');
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, 'pendaftaran');
@@ -681,37 +647,119 @@ export const StorageService = {
     this.saveMuridList(INITIAL_STUDENTS, true, true);
   },
 
-  clearAllMurid(): void {
+  async clearAllMurid(): Promise<void> {
     cachedMuridList = [];
     this.saveMuridList([], true, false);
 
-    // Padam dokumen murid dalam Firestore
     try {
-      getDocs(collection(db, 'murid')).then((snap) => {
-        if (!snap.empty) {
+      localStorage.removeItem(KEY_DELETED_MURID_IDS);
+    } catch {}
+
+    // Padam dokumen murid dalam Firestore secara batch 450
+    try {
+      const snap = await getDocs(collection(db, 'murid'));
+      if (!snap.empty) {
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 450) {
+          const chunk = docs.slice(i, i + 450);
           const batch = writeBatch(db);
-          snap.forEach((d) => batch.delete(d.ref));
-          batch.commit().catch(console.warn);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
         }
-      }).catch(console.warn);
+      }
     } catch (err) {
       console.warn('Error clearing remote murid collection:', err);
     }
   },
 
-  clearAllPendaftaran(): void {
+  async clearAllPendaftaran(): Promise<void> {
     cachedPendaftaranList = [];
     this.savePendaftaranList([], true, false);
+
     try {
-      getDocs(collection(db, 'pendaftaran')).then((snap) => {
-        if (!snap.empty) {
+      localStorage.removeItem(KEY_DELETED_PENDAFTARAN_IDS);
+    } catch {}
+
+    try {
+      const snap = await getDocs(collection(db, 'pendaftaran'));
+      if (!snap.empty) {
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 450) {
+          const chunk = docs.slice(i, i + 450);
           const batch = writeBatch(db);
-          snap.forEach((d) => batch.delete(d.ref));
-          batch.commit().catch(console.warn);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
         }
-      }).catch(console.warn);
+      }
     } catch (err) {
       console.warn('Error clearing remote pendaftaran collection:', err);
+    }
+  },
+
+  // Segerak paksa merentas semua peranti dari pelayan awan Firestore
+  async forcePullFromRemote(): Promise<{ muridCount: number; pendaftaranCount: number }> {
+    try {
+      const muridSnap = await getDocs(collection(db, 'murid'));
+      const remoteMurid: Murid[] = [];
+      muridSnap.forEach((docSnap) => {
+        const raw = docSnap.data() as Partial<Murid>;
+        const cleanId = (raw.id || docSnap.id || '').trim();
+        if (cleanId && raw.nama) {
+          remoteMurid.push({
+            id: cleanId,
+            nama: raw.nama,
+            tahun: raw.tahun !== undefined ? Number(raw.tahun) : 1,
+            kelas: raw.kelas || '',
+            jantina: (raw.jantina as Jantina) || 'Lelaki',
+            rumahSukan: (raw.rumahSukan as RumahSukan) || 'Merah',
+            idPeserta: raw.idPeserta || cleanId,
+            noPengenalan: raw.noPengenalan || raw.noSijilLahir || '',
+            noSijilLahir: raw.noSijilLahir || raw.noPengenalan || '',
+            tarikhLahir: raw.tarikhLahir || '',
+            tarikhDicipta: raw.tarikhDicipta || new Date().toISOString(),
+            tarikhKemaskini: raw.tarikhKemaskini || new Date().toISOString(),
+          });
+        }
+      });
+      remoteMurid.sort((a, b) => a.nama.localeCompare(b.nama, 'ms', { sensitivity: 'base' }));
+      cachedMuridList = remoteMurid;
+      try {
+        localStorage.setItem(KEY_MURID, JSON.stringify(remoteMurid));
+      } catch {}
+      notifySync('murid');
+
+      const pendaftaranSnap = await getDocs(collection(db, 'pendaftaran'));
+      const remotePendaftaran: PendaftaranAcara[] = [];
+      pendaftaranSnap.forEach((docSnap) => {
+        const raw = docSnap.data() as Partial<PendaftaranAcara>;
+        const cleanId = (raw.id || docSnap.id || '').trim();
+        if (cleanId && raw.acaraId && Array.isArray(raw.peserta)) {
+          remotePendaftaran.push({
+            id: cleanId,
+            acaraId: raw.acaraId,
+            acaraNama: raw.acaraNama || '',
+            rumahSukan: (raw.rumahSukan as RumahSukan) || 'Merah',
+            peserta: raw.peserta,
+            tarikhDaftar: raw.tarikhDaftar || new Date().toISOString(),
+            catatan: raw.catatan || '',
+          });
+        }
+      });
+      remotePendaftaran.sort((a, b) => {
+        const timeA = new Date(a.tarikhDaftar || 0).getTime();
+        const timeB = new Date(b.tarikhDaftar || 0).getTime();
+        return timeB - timeA;
+      });
+      cachedPendaftaranList = remotePendaftaran;
+      try {
+        localStorage.setItem(KEY_PENDAFTARAN, JSON.stringify(remotePendaftaran));
+      } catch {}
+      notifySync('pendaftaran');
+
+      return { muridCount: remoteMurid.length, pendaftaranCount: remotePendaftaran.length };
+    } catch (err) {
+      console.error('Error in forcePullFromRemote:', err);
+      return { muridCount: cachedMuridList?.length || 0, pendaftaranCount: cachedPendaftaranList?.length || 0 };
     }
   },
 

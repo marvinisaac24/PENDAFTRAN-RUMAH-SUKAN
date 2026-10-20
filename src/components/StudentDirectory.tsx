@@ -310,18 +310,18 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
     }
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (
       confirm(
         'AMARAN: Adakah anda pasti ingin memadamkan SEMUA murid daripada pangkalan data? Hanya murid yang didaftarkan nanti sahaja akan muncul dalam senarai mengikut Rumah Sukan.'
       )
     ) {
-      StorageService.clearAllMurid();
+      await StorageService.clearAllMurid();
       setSelectedIds(new Set());
       onRefresh();
       setNotification({
         type: 'info',
-        message: 'Semua rekod murid telah berjaya dipadamkan. Pangkalan data murid kini kosong.',
+        message: 'Semua rekod murid telah berjaya dipadamkan daripada pelayan Firestore dan peranti. Pangkalan data murid kini kosong.',
       });
     }
   };

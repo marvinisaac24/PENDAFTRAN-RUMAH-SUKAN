@@ -9,7 +9,8 @@ import {
   School,
   Activity,
   ArrowRight,
-  Settings
+  Settings,
+  RefreshCw
 } from 'lucide-react';
 import { AcaraSukan, Murid, PendaftaranAcara } from './types';
 import { StorageService, initFirebaseSync } from './services/storageService';
@@ -27,6 +28,7 @@ export default function App() {
   const [acaraList, setAcaraList] = useState<AcaraSukan[]>([]);
   const [pendaftaranList, setPendaftaranList] = useState<PendaftaranAcara[]>([]);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Load state and subscribe to real-time events
   const refreshAllData = () => {
@@ -34,6 +36,16 @@ export default function App() {
     setAcaraList(StorageService.getAcaraList());
     setPendaftaranList(StorageService.getPendaftaranList());
     setLastSyncTime(new Date());
+  };
+
+  const handleForceSync = async () => {
+    setIsSyncing(true);
+    try {
+      await StorageService.forcePullFromRemote();
+      refreshAllData();
+    } finally {
+      setTimeout(() => setIsSyncing(false), 400);
+    }
   };
 
   useEffect(() => {
@@ -64,14 +76,24 @@ export default function App() {
                 <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">
                     Kejohanan Sukan Tahunan Sekolah
                   </span>
                   <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Firebase Terhubung (Masa Nyata)
+                    Semua Peranti Terhubung (Masa Nyata)
                   </span>
+                  <button
+                    type="button"
+                    onClick={handleForceSync}
+                    disabled={isSyncing}
+                    title="Segerak data langsung daripada pangkalan data awan ke peranti ini"
+                    className="cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all active:scale-95 shadow-2xs"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-indigo-600' : 'text-slate-600'}`} />
+                    <span>{isSyncing ? 'Menyegerak...' : 'Segerak Sekarang'}</span>
+                  </button>
                 </div>
                 <p className="text-[11px] sm:text-xs text-slate-500">
                   Modul Pendaftaran Acara Murid Mengikut Rumah Sukan & Kelas

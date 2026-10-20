@@ -9,10 +9,14 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// Authenticate anonymously so all Firestore operations have valid auth credentials
+// Authenticate anonymously if enabled in project
 if (typeof window !== 'undefined') {
   signInAnonymously(auth).catch((err) => {
-    console.warn('Anonymous auth note:', err?.message || err);
+    // Proactive quiet handling: if anonymous auth is not enabled in Firebase project,
+    // Firestore rules already permit open operations via validation rules.
+    if (err?.code !== 'auth/admin-restricted-operation') {
+      console.warn('Firebase auth note:', err?.message || err);
+    }
   });
 }
 

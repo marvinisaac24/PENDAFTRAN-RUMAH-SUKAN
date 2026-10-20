@@ -24,7 +24,8 @@ export interface Murid {
   jantina: Jantina; // Lelaki atau Perempuan
   rumahSukan: RumahSukan; // Merah, Kuning, Hijau, Biru
   tarikhLahir?: string; // Tarikh Lahir (cth: 15/03/2014)
-  noSijilLahir?: string; // No. Sijil Lahir / No. MyKid (cth: SB123456 / 140315-13-1234)
+  noPengenalan?: string; // No. Pengenalan / MyKid / No. KP (cth: 140315-13-1234)
+  noSijilLahir?: string; // Sandaran (No. Sijil Lahir)
   tarikhDicipta?: string;
   tarikhKemaskini?: string;
 }
@@ -58,6 +59,7 @@ export interface PesertaPendaftaran {
   jantina: Jantina;
   rumahSukan: RumahSukan;
   tarikhLahir?: string;
+  noPengenalan?: string;
   noSijilLahir?: string;
   peranan?: string; // cth: 'Pemain 1', 'Pemain Simpanan', 'Pelari 1'
   isSimpanan?: boolean;
@@ -81,6 +83,9 @@ export interface RekodPratontonMurid {
   kelas: string;
   jantina: string;
   rumahSukan: string;
+  tarikhLahir?: string;
+  noPengenalan?: string;
+  noSijilLahir?: string;
   ralat: string[];
   amaran: string[];
   status: 'sah' | 'ralat' | 'kemaskini';

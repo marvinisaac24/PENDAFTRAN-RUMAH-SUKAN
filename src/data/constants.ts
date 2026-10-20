@@ -4,7 +4,7 @@ import { SENARAI_ACARA_SK_TUDAN_2026 } from './acaraTudan2026';
 export const SENARAI_RUMAH: Record<RumahSukan, RumahInfo> = {
   Merah: {
     id: 'Merah',
-    namaPenuh: 'Rumah Merah (Temenggung)',
+    namaPenuh: 'Rumah Merah',
     namaRumah: 'Rumah Merah',
     warnaTema: '#ef4444',
     badgeClass: 'bg-red-100 text-red-800 border-red-300',
@@ -12,11 +12,11 @@ export const SENARAI_RUMAH: Record<RumahSukan, RumahInfo> = {
     borderClass: 'border-red-500',
     textClass: 'text-red-600',
     gradientClass: 'from-red-600 to-rose-700',
-    maskot: 'Helang Perkasa'
+    maskot: 'Warna Merah'
   },
   Kuning: {
     id: 'Kuning',
-    namaPenuh: 'Rumah Kuning (Bendahara)',
+    namaPenuh: 'Rumah Kuning',
     namaRumah: 'Rumah Kuning',
     warnaTema: '#eab308',
     badgeClass: 'bg-amber-100 text-amber-900 border-amber-300',
@@ -24,11 +24,11 @@ export const SENARAI_RUMAH: Record<RumahSukan, RumahInfo> = {
     borderClass: 'border-amber-500',
     textClass: 'text-amber-600',
     gradientClass: 'from-amber-500 to-yellow-600',
-    maskot: 'Harimau Berani'
+    maskot: 'Warna Kuning'
   },
   Hijau: {
     id: 'Hijau',
-    namaPenuh: 'Rumah Hijau (Laksamana)',
+    namaPenuh: 'Rumah Hijau',
     namaRumah: 'Rumah Hijau',
     warnaTema: '#10b981',
     badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
@@ -36,11 +36,11 @@ export const SENARAI_RUMAH: Record<RumahSukan, RumahInfo> = {
     borderClass: 'border-emerald-500',
     textClass: 'text-emerald-600',
     gradientClass: 'from-emerald-600 to-teal-700',
-    maskot: 'Garuda Tangkas'
+    maskot: 'Warna Hijau'
   },
   Biru: {
     id: 'Biru',
-    namaPenuh: 'Rumah Biru (Syahbandar)',
+    namaPenuh: 'Rumah Biru',
     namaRumah: 'Rumah Biru',
     warnaTema: '#3b82f6',
     badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
@@ -48,7 +48,7 @@ export const SENARAI_RUMAH: Record<RumahSukan, RumahInfo> = {
     borderClass: 'border-blue-500',
     textClass: 'text-blue-600',
     gradientClass: 'from-blue-600 to-indigo-700',
-    maskot: 'Rajawali Angkasa'
+    maskot: 'Warna Biru'
   }
 };
 

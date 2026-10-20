@@ -112,13 +112,16 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ currentMuridList, onUp
 
     setIsSaving(true);
     try {
-      const payload = validRecords.map((r) => ({
+      const payload: Murid[] = validRecords.map((r) => ({
         id: r.idMurid,
         nama: r.nama,
         tahun: Number(r.tahun),
         kelas: r.kelas,
         jantina: r.jantina as 'Lelaki' | 'Perempuan',
         rumahSukan: r.rumahSukan as RumahSukan,
+        tarikhLahir: r.tarikhLahir,
+        noPengenalan: r.noPengenalan || r.noSijilLahir,
+        noSijilLahir: r.noPengenalan || r.noSijilLahir,
       }));
 
       if (importMode === 'replace') {
@@ -715,6 +718,8 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ currentMuridList, onUp
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3">ID Murid</th>
                   <th className="py-2.5 px-3">Nama Murid</th>
+                  <th className="py-2.5 px-3">No. Pengenalan</th>
+                  <th className="py-2.5 px-3">Tarikh Lahir</th>
                   <th className="py-2.5 px-3">Tahun & Kelas</th>
                   <th className="py-2.5 px-3">Jantina</th>
                   <th className="py-2.5 px-3">Rumah Sukan</th>
@@ -756,6 +761,12 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ currentMuridList, onUp
                     </td>
                     <td className="py-2.5 px-3 font-bold text-slate-900">
                       {rec.nama || <span className="text-rose-500 italic">[Kosong]</span>}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-slate-700">
+                      {rec.noPengenalan || <span className="text-slate-400 italic">-</span>}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-700">
+                      {rec.tarikhLahir || <span className="text-slate-400 italic">-</span>}
                     </td>
                     <td className="py-2.5 px-3 text-slate-700">
                       {rec.kelas} ({rec.tahun === 0 ? 'Pra' : `T${rec.tahun}`})

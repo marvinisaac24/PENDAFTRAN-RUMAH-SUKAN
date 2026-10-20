@@ -51,6 +51,8 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
   const [isAdding, setIsAdding] = useState<boolean>(false);
   const [newId, setNewId] = useState<string>('');
   const [newNama, setNewNama] = useState<string>('');
+  const [newNoPengenalan, setNewNoPengenalan] = useState<string>('');
+  const [newTarikhLahir, setNewTarikhLahir] = useState<string>('');
   const [newTahun, setNewTahun] = useState<number>(3);
   const [newKelas, setNewKelas] = useState<string>('3 Fleksibel');
   const [newJantina, setNewJantina] = useState<Jantina>('Lelaki');
@@ -187,6 +189,22 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
       newId.trim() ||
       `S-${housePrefix}${newTahun === 0 ? 'P' : newTahun}-${Date.now().toString().slice(-4)}`;
 
+    let dob = newTarikhLahir.trim();
+    if (!dob && newNoPengenalan.trim()) {
+      const digits = newNoPengenalan.replace(/\D/g, '');
+      if (digits.length >= 6) {
+        const yy = parseInt(digits.slice(0, 2), 10);
+        const mm = digits.slice(2, 4);
+        const dd = digits.slice(4, 6);
+        const mNum = parseInt(mm, 10);
+        const dNum = parseInt(dd, 10);
+        if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+          const fullYear = yy <= 30 ? 2000 + yy : 1900 + yy;
+          dob = `${dd}/${mm}/${fullYear}`;
+        }
+      }
+    }
+
     StorageService.upsertMuridBatch([
       {
         id: autoRefId,
@@ -195,12 +213,17 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
         kelas: newKelas.trim(),
         jantina: newJantina,
         rumahSukan: newRumah,
+        noPengenalan: newNoPengenalan.trim() || undefined,
+        noSijilLahir: newNoPengenalan.trim() || undefined,
+        tarikhLahir: dob || undefined,
       },
     ]);
 
     setIsAdding(false);
     setNewId('');
     setNewNama('');
+    setNewNoPengenalan('');
+    setNewTarikhLahir('');
     onRefresh();
     setNotification({
       type: 'success',
@@ -535,6 +558,8 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                   </th>
                   <th className="py-2.5 px-3">#</th>
                   <th className="py-2.5 px-3">Nama Murid</th>
+                  <th className="py-2.5 px-3">No. Pengenalan</th>
+                  <th className="py-2.5 px-3">Tarikh Lahir</th>
                   <th className="py-2.5 px-3">ID Peserta Acara (Auto)</th>
                   <th className="py-2.5 px-3">Tahun</th>
                   <th className="py-2.5 px-3">Kelas</th>
@@ -568,6 +593,12 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                       <td className="py-2.5 px-3 font-mono text-slate-400">{idx + 1}</td>
                       <td className="py-2.5 px-3 font-semibold text-slate-900">
                         {murid.nama}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-slate-700">
+                        {murid.noPengenalan || murid.noSijilLahir || <span className="text-slate-400 italic">-</span>}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-700">
+                        {murid.tarikhLahir || <span className="text-slate-400 italic">-</span>}
                       </td>
                       <td className="py-2.5 px-3">
                         {officialAthleteId ? (
@@ -738,6 +769,34 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                   onChange={(e) => setNewNama(e.target.value)}
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    No. Pengenalan (MyKid / IC)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 140512-13-1234"
+                    value={newNoPengenalan}
+                    onChange={(e) => setNewNoPengenalan(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tarikh Lahir
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 12/05/2014"
+                    value={newTarikhLahir}
+                    onChange={(e) => setNewTarikhLahir(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

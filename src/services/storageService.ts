@@ -15,6 +15,7 @@ const KEY_MURID = 'sukan_sekolah_murid_v6';
 const KEY_PENDAFTARAN = 'sukan_sekolah_pendaftaran_v3';
 const KEY_ACARA = 'sukan_sekolah_acara_v5';
 const KEY_DELETED_MURID_IDS = 'sukan_sk_tudan_deleted_ids_v4';
+const KEY_DELETED_PENDAFTARAN_IDS = 'sukan_sk_tudan_deleted_pendaftaran_ids_v1';
 
 // In-memory cache for ultra-fast zero-lag access
 let cachedMuridList: Murid[] | null = null;
@@ -63,6 +64,43 @@ export function unmarkDeletedMuridId(id: string): void {
     if (set.has(key)) {
       set.delete(key);
       localStorage.setItem(KEY_DELETED_MURID_IDS, JSON.stringify(Array.from(set)));
+    }
+  } catch {}
+}
+
+// Tombstone pengesanan pendaftaran yang telah dipadam secara jelas
+export function getDeletedPendaftaranIds(): Set<string> {
+  try {
+    const data = localStorage.getItem(KEY_DELETED_PENDAFTARAN_IDS);
+    if (!data) return new Set();
+    const arr = JSON.parse(data) as string[];
+    return new Set(arr.map((id) => (id || '').trim()));
+  } catch {
+    return new Set();
+  }
+}
+
+export function addDeletedPendaftaranIds(ids: string[]): void {
+  try {
+    const set = getDeletedPendaftaranIds();
+    ids.forEach((id) => {
+      if (id && id.trim()) {
+        set.add(id.trim());
+      }
+    });
+    localStorage.setItem(KEY_DELETED_PENDAFTARAN_IDS, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('Failed to store deleted pendaftaran ids', e);
+  }
+}
+
+export function unmarkDeletedPendaftaranId(id: string): void {
+  try {
+    const set = getDeletedPendaftaranIds();
+    const key = (id || '').trim();
+    if (set.has(key)) {
+      set.delete(key);
+      localStorage.setItem(KEY_DELETED_PENDAFTARAN_IDS, JSON.stringify(Array.from(set)));
     }
   } catch {}
 }
@@ -193,6 +231,8 @@ export function initFirebaseSync() {
     onSnapshot(
       muridCol,
       (snapshot) => {
+        const deletedIds = getDeletedMuridIds();
+
         if (snapshot.empty) {
           // Jika Firestore kosong tetapi cache tempatan ada rekod murid, muat naik ke Firestore
           const localMurid = StorageService.getMuridList();
@@ -202,34 +242,56 @@ export function initFirebaseSync() {
           return;
         }
 
-        const remoteList: Murid[] = [];
+        const remoteMap = new Map<string, Murid>();
         snapshot.forEach((docSnap) => {
-          const m = docSnap.data() as Murid;
-          if (m && m.id && m.nama) {
-            remoteList.push(m);
+          const raw = docSnap.data() as Partial<Murid>;
+          const cleanId = (raw.id || docSnap.id || '').trim();
+          if (cleanId && raw.nama && !deletedIds.has(cleanId.toUpperCase())) {
+            remoteMap.set(cleanId.toUpperCase(), {
+              id: cleanId,
+              nama: raw.nama,
+              tahun: raw.tahun !== undefined ? Number(raw.tahun) : 1,
+              kelas: raw.kelas || '',
+              jantina: raw.jantina || 'Lelaki',
+              rumahSukan: raw.rumahSukan || 'Merah',
+              idPeserta: raw.idPeserta || cleanId,
+              noSijilLahir: raw.noSijilLahir || '',
+              tarikhLahir: raw.tarikhLahir || '',
+              tarikhDicipta: raw.tarikhDicipta || new Date().toISOString(),
+              tarikhKemaskini: raw.tarikhKemaskini || new Date().toISOString(),
+            });
           }
         });
 
-        // Susun murid mengikut abjad nama
-        remoteList.sort((a, b) => a.nama.localeCompare(b.nama, 'ms', { sensitivity: 'base' }));
-
-        // Semak sama ada data remote berbeza daripada cache tempatan
+        // Gabungkan dengan sebarang murid tempatan yang belum selesai sync ke remote
         const currentLocal = StorageService.getMuridList();
+        const pendingMuridToSync: Murid[] = [];
+
+        currentLocal.forEach((m) => {
+          const key = m.id.trim().toUpperCase();
+          if (!deletedIds.has(key) && !remoteMap.has(key)) {
+            remoteMap.set(key, m);
+            pendingMuridToSync.push(m);
+          }
+        });
+
+        const mergedList = Array.from(remoteMap.values());
+        mergedList.sort((a, b) => a.nama.localeCompare(b.nama, 'ms', { sensitivity: 'base' }));
+
+        // Semak sama ada perlu kemaskini memori / localStorage
         const hasChange =
-          remoteList.length !== currentLocal.length ||
-          remoteList.some((rm, idx) => {
+          mergedList.length !== currentLocal.length ||
+          mergedList.some((rm, idx) => {
             const lm = currentLocal[idx];
-            return (
-              !lm ||
-              lm.id !== rm.id ||
-              lm.nama !== rm.nama ||
-              lm.kelas !== rm.kelas ||
-              lm.rumahSukan !== rm.rumahSukan
-            );
+            return !lm || lm.id !== rm.id || lm.nama !== rm.nama || lm.rumahSukan !== rm.rumahSukan;
           });
 
         if (hasChange) {
-          StorageService.saveMuridList(remoteList, true, false);
+          StorageService.saveMuridList(mergedList, true, false);
+        }
+
+        if (pendingMuridToSync.length > 0) {
+          StorageService.syncLocalToFirestore(pendingMuridToSync);
         }
       },
       (error) => {
@@ -246,45 +308,65 @@ export function initFirebaseSync() {
     onSnapshot(
       pendaftaranCol,
       (snapshot) => {
+        const deletedRegIds = getDeletedPendaftaranIds();
+
         if (snapshot.empty) {
           // Jika Firestore kosong tetapi ada pendaftaran tempatan, segerakkan ke Firestore
-          const localRegs = StorageService.getPendaftaranList();
+          const localRegs = StorageService.getPendaftaranList().filter((r) => !deletedRegIds.has(r.id));
           if (localRegs.length > 0) {
             StorageService.syncPendaftaranToFirestore(localRegs);
           }
           return;
         }
 
-        const remoteList: PendaftaranAcara[] = [];
+        const remoteMap = new Map<string, PendaftaranAcara>();
         snapshot.forEach((docSnap) => {
-          const p = docSnap.data() as PendaftaranAcara;
-          if (p && p.id && p.acaraId) {
-            remoteList.push(p);
+          const raw = docSnap.data() as Partial<PendaftaranAcara>;
+          const cleanId = (raw.id || docSnap.id || '').trim();
+          if (cleanId && raw.acaraId && Array.isArray(raw.peserta) && !deletedRegIds.has(cleanId)) {
+            remoteMap.set(cleanId, {
+              id: cleanId,
+              acaraId: raw.acaraId,
+              acaraNama: raw.acaraNama || '',
+              rumahSukan: raw.rumahSukan || 'Merah',
+              peserta: raw.peserta,
+              tarikhDaftar: raw.tarikhDaftar || new Date().toISOString(),
+              catatan: raw.catatan || '',
+            });
           }
         });
 
-        // Susun mengikut pendaftaran terkini di bahagian atas
-        remoteList.sort((a, b) => {
+        // Gabungkan dengan sebarang pendaftaran tempatan yang sah dan belum dipadam
+        const currentLocal = StorageService.getPendaftaranList();
+        const pendingRegToSync: PendaftaranAcara[] = [];
+
+        currentLocal.forEach((reg) => {
+          if (!deletedRegIds.has(reg.id) && !remoteMap.has(reg.id)) {
+            remoteMap.set(reg.id, reg);
+            pendingRegToSync.push(reg);
+          }
+        });
+
+        const mergedList = Array.from(remoteMap.values());
+        mergedList.sort((a, b) => {
           const timeA = new Date(a.tarikhDaftar || 0).getTime();
           const timeB = new Date(b.tarikhDaftar || 0).getTime();
           return timeB - timeA;
         });
 
-        // Semak sama ada data pendaftaran berbeza
-        const currentLocal = StorageService.getPendaftaranList();
         const hasChange =
-          remoteList.length !== currentLocal.length ||
-          remoteList.some((rp, idx) => {
+          mergedList.length !== currentLocal.length ||
+          mergedList.some((rp, idx) => {
             const lp = currentLocal[idx];
-            return (
-              !lp ||
-              lp.id !== rp.id ||
-              lp.peserta?.length !== rp.peserta?.length
-            );
+            return !lp || lp.id !== rp.id || lp.peserta?.length !== rp.peserta?.length;
           });
 
         if (hasChange) {
-          StorageService.savePendaftaranList(remoteList, true, false);
+          StorageService.savePendaftaranList(mergedList, true, false);
+        }
+
+        if (pendingRegToSync.length > 0) {
+          StorageService.syncPendaftaranToFirestore(pendingRegToSync);
         }
       },
       (error) => {
@@ -426,6 +508,8 @@ export const StorageService = {
     let dikemaskini = 0;
     const now = new Date().toISOString();
 
+    const modifiedStudents: Murid[] = [];
+
     for (const item of newMuridList) {
       const cleanId = item.id.trim();
       const key = cleanId.toUpperCase();
@@ -433,7 +517,7 @@ export const StorageService = {
 
       const existing = map.get(key);
       if (existing) {
-        map.set(key, {
+        const updated = {
           ...existing,
           nama: item.nama.trim(),
           tahun: item.tahun,
@@ -441,10 +525,12 @@ export const StorageService = {
           jantina: item.jantina,
           rumahSukan: item.rumahSukan,
           tarikhKemaskini: now,
-        });
+        };
+        map.set(key, updated);
+        modifiedStudents.push(updated);
         dikemaskini++;
       } else {
-        map.set(key, {
+        const created = {
           id: cleanId,
           nama: item.nama.trim(),
           tahun: item.tahun,
@@ -453,13 +539,21 @@ export const StorageService = {
           rumahSukan: item.rumahSukan,
           tarikhDicipta: now,
           tarikhKemaskini: now,
-        });
+        };
+        map.set(key, created);
+        modifiedStudents.push(created);
         ditambah++;
       }
     }
 
     const updatedList = Array.from(map.values());
-    this.saveMuridList(updatedList, true, true);
+    this.saveMuridList(updatedList, true, false);
+
+    // Sync hanya murid yang ditambah / dikemaskini bagi mengelakkan bebanan Firestore
+    if (modifiedStudents.length > 0) {
+      this.syncLocalToFirestore(modifiedStudents);
+    }
+
     return { ditambah, dikemaskini, total: updatedList.length };
   },
 
@@ -775,6 +869,9 @@ export const StorageService = {
       }
     }
 
+    // Nyah-tanda daripada senarai dipadam
+    unmarkDeletedPendaftaranId(newEntry.id);
+
     // Masukkan ke bahagian atas senarai pendaftaran tempatan
     list.unshift(newEntry);
     this.savePendaftaranList(list, true, false);
@@ -794,6 +891,7 @@ export const StorageService = {
   },
 
   padamPendaftaran(id: string): void {
+    addDeletedPendaftaranIds([id]);
     const list = this.getPendaftaranList();
     const filtered = list.filter((p) => p.id !== id);
     cachedPendaftaranList = filtered;

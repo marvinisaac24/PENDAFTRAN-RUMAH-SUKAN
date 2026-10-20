@@ -245,8 +245,59 @@ export const RegistrationList: React.FC<RegistrationListProps> = ({
           </div>
         </div>
 
-        {/* Filter Bar */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Butang Pantas Pilihan Rumah Sukan (Merah, Kuning, Hijau, Biru) */}
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <span className="text-slate-400 font-bold uppercase text-[10px] mr-1 shrink-0">
+            Rumah Sukan:
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setFilterRumah('semua')}
+            className={`cursor-pointer px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap ${
+              filterRumah === 'semua'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Semua Rumah ({pendaftaranList.length})
+          </button>
+
+          {SENARAI_RUMAH_KEYS.map((r) => {
+            const isSel = filterRumah === r;
+            const houseCount = pendaftaranList.filter((p) => p.rumahSukan === r).length;
+            const info = SENARAI_RUMAH[r];
+
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setFilterRumah(r)}
+                className={`cursor-pointer px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  isSel
+                    ? `${info.badgeClass} ring-2 ring-offset-1 ring-indigo-500 shadow-xs font-extrabold`
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs"
+                  style={{ backgroundColor: info.warnaTema }}
+                />
+                <span>Rumah {r}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    isSel ? 'bg-white/40 text-slate-900 font-bold' : 'bg-white text-slate-600'
+                  }`}
+                >
+                  {houseCount}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Filter Bar Carian & Dropdown */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="relative sm:col-span-2">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -589,6 +640,9 @@ export const RegistrationList: React.FC<RegistrationListProps> = ({
           pendaftaranList={pendaftaranList}
           acaraList={effectiveAcaraList}
           muridList={effectiveMuridList}
+          initialHouse={filterRumah !== 'semua' ? filterRumah : 'SEMUA'}
+          initialAgeGroup="12TKB"
+          initialGender="Lelaki"
         />
       )}
     </div>

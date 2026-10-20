@@ -21,7 +21,14 @@ import {
   Calendar,
   Plus,
   X,
-  FileText
+  FileText,
+  Trash2,
+  Edit3,
+  Download,
+  ListFilter,
+  SlidersHorizontal,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { AcaraSukan, Murid, PendaftaranAcara, PesertaPendaftaran, RumahSukan } from '../types';
 import { SENARAI_RUMAH, SENARAI_RUMAH_KEYS, SENARAI_KELAS_PRA, SENARAI_ALIRAN_KELAS } from '../data/constants';
@@ -29,6 +36,7 @@ import { StorageService } from '../services/storageService';
 import { PrintableCardSlipModal } from './PrintableCardSlipModal';
 import { OfficialMssrFormModal } from './OfficialMssrFormModal';
 import { getOrGeneratePesertaId } from '../utils/athleteIdGenerator';
+import { exportSingleHouseReport } from '../utils/sportsReportExporter';
 
 interface RegistrationFlowProps {
   muridList: Murid[];
@@ -65,6 +73,18 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   const [showAddStudentModal, setShowAddStudentModal] = useState<boolean>(false);
   const [inlineNama, setInlineNama] = useState<string>('');
   const [inlineJantina, setInlineJantina] = useState<'Lelaki' | 'Perempuan'>('Lelaki');
+
+  // Mod Paparan Rumah Sukan: Secara lalai 'senarai' (acara dan peserta disenaraikan terus mengikut kehendak pengguna)
+  const [houseViewMode, setHouseViewMode] = useState<'senarai' | 'wizard'>('senarai');
+  const [statusFilter, setStatusFilter] = useState<'semua' | 'didaftar' | 'belum'>('semua');
+  const [slipRegToPrint, setSlipRegToPrint] = useState<PendaftaranAcara | null>(null);
+
+  // Quick Registration State bagi acara dalam mod senarai
+  const [quickRegisterAcara, setQuickRegisterAcara] = useState<AcaraSukan | null>(null);
+  const [quickSelectedPesertaIds, setQuickSelectedPesertaIds] = useState<string[]>([]);
+  const [quickSimpananIdSet, setQuickSimpananIdSet] = useState<Set<string>>(new Set());
+  const [quickSelectedKelas, setQuickSelectedKelas] = useState<string>('SEMUA');
+  const [quickCarianMurid, setQuickCarianMurid] = useState<string>('');
 
   // Helper function to assign weight starting strictly from Tahun 1 to Tahun 6:
   // Tahun 1 (weight 1) -> Tahun 2 (weight 2) -> Tahun 3 (weight 3) -> Tahun 4 (weight 4) -> Tahun 5 (weight 5) -> Tahun 6 (weight 6) -> Padang (weight 7) -> Pra Sekolah (weight 8)
@@ -304,35 +324,6 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     return filtered.sort((a, b) => a.nama.localeCompare(b.nama, 'ms', { sensitivity: 'base' }));
   }, [muridList, selectedRumah, selectedAcara, selectedKelas, carianMurid]);
 
-  // Presets
-  const applyPresetExample = () => {
-    setSelectedRumah('Merah');
-    setTahunFilter(3);
-    const targetAcara = acaraList.find(
-      (a) => a.nama.includes('60 Meter Lelaki Tahun 3') || (a.kategoriJantina === 'Lelaki' && a.tahunKelayakan.includes(3))
-    );
-    if (targetAcara) {
-      setSelectedAcaraId(targetAcara.id);
-    }
-    setSelectedKelas('3 Fleksibel');
-    setSelectedPesertaIds([]);
-    setSimpananIdSet(new Set());
-  };
-
-  const applyPresetSukaneka = () => {
-    setSelectedRumah('Merah');
-    setTahunFilter(1);
-    const targetAcara = acaraList.find(
-      (a) => a.nama.includes('Leret Bola') && a.kategoriJantina === 'Lelaki' && a.tahunKelayakan.includes(1)
-    );
-    if (targetAcara) {
-      setSelectedAcaraId(targetAcara.id);
-    }
-    setSelectedKelas('1 Arif');
-    setSelectedPesertaIds([]);
-    setSimpananIdSet(new Set());
-  };
-
   const handleToggleStudent = (studentId: string) => {
     if (!selectedAcara) return;
 
@@ -505,6 +496,9 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
           rumahSukan: student.rumahSukan,
           peranan,
           isSimpanan: isMarkedSimpanan,
+          noPengenalan: student.noPengenalan || student.noSijilLahir,
+          noSijilLahir: student.noPengenalan || student.noSijilLahir,
+          tarikhLahir: student.tarikhLahir,
         });
       }
     });
@@ -528,48 +522,197 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     onSuccess();
   };
 
+  // Data dan statistik Rumah Sukan terpilih
+  const housePendaftaran = useMemo(() => {
+    if (!selectedRumah) return [];
+    return pendaftaranList.filter((p) => p.rumahSukan === selectedRumah);
+  }, [pendaftaranList, selectedRumah]);
+
+  const housePesertaTotal = useMemo(() => {
+    return housePendaftaran.reduce((acc, curr) => acc + curr.peserta.length, 0);
+  }, [housePendaftaran]);
+
+  const houseMuridTotal = useMemo(() => {
+    if (!selectedRumah) return 0;
+    return muridList.filter((m) => m.rumahSukan === selectedRumah).length;
+  }, [muridList, selectedRumah]);
+
+  // Padam pendaftaran dengan pengesahan
+  const handleDeletePendaftaran = (id: string, namaAcara: string) => {
+    if (confirm(`Adakah anda pasti ingin memadamkan rekod pendaftaran bagi "${namaAcara}"?`)) {
+      StorageService.padamPendaftaran(id);
+      onSuccess();
+      setSuccessMessage(`Pendaftaran bagi "${namaAcara}" telah berjaya dipadamkan.`);
+    }
+  };
+
+  // Buka Slip Kad untuk dicetak
+  const handleOpenSlip = (reg: PendaftaranAcara) => {
+    setSlipRegToPrint(reg);
+    setLastSavedReg(reg);
+    setShowSlipModal(true);
+  };
+
+  // Buka borang pantas pendaftaran peserta untuk satu acara daripada mod senarai
+  const handleOpenQuickRegister = (acara: AcaraSukan) => {
+    if (!selectedRumah) return;
+    const existing = pendaftaranList.find(
+      (p) => p.acaraId === acara.id && p.rumahSukan === selectedRumah
+    );
+    if (existing) {
+      setQuickSelectedPesertaIds(existing.peserta.map((p) => p.muridId));
+      const simpananSet = new Set<string>();
+      existing.peserta.forEach((p) => {
+        if (p.isSimpanan || (p.peranan && p.peranan.toLowerCase().includes('simpanan'))) {
+          simpananSet.add(p.muridId);
+        }
+      });
+      setQuickSimpananIdSet(simpananSet);
+    } else {
+      setQuickSelectedPesertaIds([]);
+      setQuickSimpananIdSet(new Set());
+    }
+    setQuickSelectedKelas('SEMUA');
+    setQuickCarianMurid('');
+    setQuickRegisterAcara(acara);
+  };
+
+  // Simpan pendaftaran pantas bagi acara dalam mod senarai
+  const handleSaveQuickRegister = async () => {
+    if (!quickRegisterAcara || !selectedRumah) return;
+    if (quickSelectedPesertaIds.length === 0) {
+      alert('Sila pilih sekurang-kurangnya seorang murid.');
+      return;
+    }
+
+    const houseMuridMap = new Map<string, Murid>();
+    muridList.forEach((m) => {
+      if (m.rumahSukan === selectedRumah) {
+        houseMuridMap.set(m.id, m);
+      }
+    });
+
+    const isGroup = quickRegisterAcara.jenis === 'Berkumpulan';
+    const isSukaneka6 = isGroup && quickRegisterAcara.bilanganAhli === 6;
+
+    const batchAssigned = new Map<string, string>();
+    const pesertaData: PesertaPendaftaran[] = [];
+    quickSelectedPesertaIds.forEach((muridId, idx) => {
+      const student = houseMuridMap.get(muridId);
+      if (student) {
+        const officialIdPeserta = getOrGeneratePesertaId(student, pendaftaranList, batchAssigned);
+        const isMarkedSimpanan = quickSimpananIdSet.has(muridId);
+
+        let peranan: string | undefined = undefined;
+        if (isSukaneka6) {
+          peranan = isMarkedSimpanan ? 'Pemain Simpanan' : `Pemain ${idx + 1}`;
+        } else if (isGroup) {
+          peranan = isMarkedSimpanan ? 'Pelari Simpanan' : `Pelari ${idx + 1}`;
+        } else {
+          peranan = 'Peserta Utama';
+        }
+
+        pesertaData.push({
+          muridId: student.id,
+          idPeserta: officialIdPeserta,
+          nama: student.nama,
+          tahun: student.tahun,
+          kelas: student.kelas,
+          jantina: student.jantina,
+          rumahSukan: student.rumahSukan,
+          peranan,
+          isSimpanan: isMarkedSimpanan,
+          noPengenalan: student.noPengenalan || student.noSijilLahir,
+          noSijilLahir: student.noPengenalan || student.noSijilLahir,
+          tarikhLahir: student.tarikhLahir,
+        });
+      }
+    });
+
+    const savedReg = await StorageService.tambahPendaftaran({
+      acaraId: quickRegisterAcara.id,
+      acaraNama: quickRegisterAcara.nama,
+      rumahSukan: selectedRumah,
+      peserta: pesertaData,
+      catatan: '',
+    });
+
+    setLastSavedReg(savedReg);
+    setSuccessMessage(
+      `Pendaftaran berjaya disimpan! ${pesertaData.length} peserta telah didaftarkan dalam "${quickRegisterAcara.nama}" bagi Rumah ${selectedRumah}.`
+    );
+    setQuickRegisterAcara(null);
+    onSuccess();
+  };
+
+  // Senarai Acara yang ditapis khas bagi paparan senarai Rumah Sukan
+  const houseDisplayedAcara = useMemo(() => {
+    if (!selectedRumah) return [];
+
+    return sortedAndFilteredAcara.filter((acara) => {
+      const reg = pendaftaranList.find(
+        (p) => p.acaraId === acara.id && p.rumahSukan === selectedRumah
+      );
+
+      // Status filter
+      if (statusFilter === 'didaftar' && !reg) return false;
+      if (statusFilter === 'belum' && reg) return false;
+
+      // Carian tambahan: padankan nama peserta jika ada
+      if (carianAcara.trim()) {
+        const q = carianAcara.trim().toLowerCase();
+        const matchesEvent =
+          acara.nama.toLowerCase().includes(q) ||
+          acara.kod.toLowerCase().includes(q) ||
+          (acara.catatan && acara.catatan.toLowerCase().includes(q));
+
+        const matchesPeserta = reg?.peserta.some(
+          (p) =>
+            p.nama.toLowerCase().includes(q) ||
+            p.kelas.toLowerCase().includes(q) ||
+            (p.idPeserta && p.idPeserta.toLowerCase().includes(q))
+        );
+
+        if (!matchesEvent && !matchesPeserta) return false;
+      }
+
+      return true;
+    });
+  }, [sortedAndFilteredAcara, pendaftaranList, selectedRumah, statusFilter, carianAcara]);
+
+  // Calon murid yang layak bagi modal pendaftaran pantas
+  const quickEligibleCandidates = useMemo(() => {
+    if (!quickRegisterAcara || !selectedRumah) return [];
+
+    return muridList
+      .filter((m) => {
+        if (m.rumahSukan !== selectedRumah) return false;
+        if (!quickRegisterAcara.tahunKelayakan.includes(m.tahun)) return false;
+        if (
+          quickRegisterAcara.kategoriJantina !== 'Terbuka' &&
+          m.jantina !== quickRegisterAcara.kategoriJantina
+        ) {
+          return false;
+        }
+        if (quickSelectedKelas !== 'SEMUA' && m.kelas !== quickSelectedKelas) {
+          return false;
+        }
+        if (quickCarianMurid.trim()) {
+          const q = quickCarianMurid.trim().toLowerCase();
+          if (!m.nama.toLowerCase().includes(q) && !m.id.toLowerCase().includes(q)) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .sort((a, b) => a.nama.localeCompare(b.nama));
+  }, [muridList, quickRegisterAcara, selectedRumah, quickSelectedKelas, quickCarianMurid]);
+
   // Determine current step index (1-4)
   const currentStep = !selectedRumah ? 1 : !selectedAcaraId ? 2 : !selectedKelas ? 3 : 4;
 
   return (
     <div className="space-y-6">
-      {/* Quick Test Presets Banner */}
-      <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 rounded-2xl p-4 text-white shadow-md flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-sm shrink-0">
-            <Sparkles className="w-5 h-5 text-yellow-200" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold tracking-wider uppercase text-red-100">
-              Pintasan Ujian Contoh Spesifikasi
-            </div>
-            <div className="font-bold text-sm sm:text-base">
-              Rumah Merah → 60 Meter Lelaki Tahun 3 → 3 Fleksibel
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={applyPresetExample}
-            className="cursor-pointer bg-white text-red-700 hover:bg-red-50 font-semibold px-3.5 py-1.5 rounded-xl text-xs transition-all shadow hover:shadow-md flex items-center gap-1.5 whitespace-nowrap active:scale-95"
-          >
-            <span>Ujian Tahun 3 Fleksibel</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={applyPresetSukaneka}
-            className="cursor-pointer bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold px-3.5 py-1.5 rounded-xl text-xs transition-all shadow hover:shadow-md flex items-center gap-1.5 whitespace-nowrap active:scale-95"
-          >
-            <span>Ujian Sukaneka 6 Murid (T1)</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
       {/* Breadcrumb Steps Header */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
         <div className="flex items-center justify-between mb-3">
@@ -875,6 +1018,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                 type="button"
                 onClick={() => {
                   setSelectedRumah(rumahKey);
+                  setHouseViewMode('senarai');
                   if (selectedRumah !== rumahKey) {
                     setSelectedAcaraId(null);
                     setSelectedKelas(null);
@@ -907,7 +1051,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                 </div>
 
                 <div className="font-bold text-base text-slate-900">{info.namaRumah}</div>
-                <div className="text-xs text-slate-500 italic mb-3">{info.maskot}</div>
+                <div className="text-xs text-slate-500 font-medium mb-3">Rumah Sukan Rasmi</div>
 
                 <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-600">
                   <span>Jumlah Murid:</span>
@@ -922,9 +1066,465 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       </div>
 
       {/* ============================================================== */}
-      {/* LANGKAH 2: PILIHAN ACARA BERURUTAN DARI TAHUN 1 HINGGA TAHUN 6 */}
+      {/* PAPARAN UTAMA SELEPAS KLIK RUMAH SUKAN: SENARAI ACARA & PESERTA */}
+      {/* (Memenuhi permintaan pengguna: Selepas klik rumah sukan, acara dan peserta disenaraikan sahaja agar jelas) */}
       {/* ============================================================== */}
-      {selectedRumah && (
+      {selectedRumah && houseViewMode === 'senarai' && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 animate-fadeIn space-y-6">
+          {/* Header Kad Rumah Sukan Terpilih */}
+          <div
+            className={`p-5 rounded-2xl border ${SENARAI_RUMAH[selectedRumah].borderClass} ${SENARAI_RUMAH[selectedRumah].bgLightClass} flex flex-col lg:flex-row lg:items-center justify-between gap-4`}
+          >
+            <div className="flex items-center gap-3.5">
+              <div
+                className="w-12 h-12 rounded-2xl text-white font-extrabold flex items-center justify-center text-xl shadow-md shrink-0"
+                style={{ backgroundColor: SENARAI_RUMAH[selectedRumah].warnaTema }}
+              >
+                {selectedRumah[0]}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl font-extrabold text-slate-900">
+                    Rumah {selectedRumah}
+                  </h2>
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-white text-slate-700 border border-slate-200 shadow-2xs">
+                    {houseMuridTotal} Murid Dalam Rumah
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Paparan Senarai Acara & Peserta — Semua acara sukan dan senarai peserta berdaftar bagi Rumah {selectedRumah} disenaraikan terus di bawah.
+                </p>
+              </div>
+            </div>
+
+            {/* Butang Tindakan Pantas */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Muat Turun PDF Landskap Rasmi */}
+              <button
+                type="button"
+                onClick={() => setShowOfficialMssrModal(true)}
+                className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 active:scale-95 rounded-xl shadow-md shadow-red-600/20 transition-all"
+                title="Buka dan muat turun Borang Rasmi MSSR (PDF Landskap) bagi Rumah ini"
+              >
+                <FileText className="w-4 h-4 text-white" />
+                <span>Borang Rasmi MSSR (PDF Landskap)</span>
+              </button>
+
+              {/* Muat Turun Excel Rumah Ini */}
+              <button
+                type="button"
+                onClick={() => exportSingleHouseReport(selectedRumah, pendaftaranList, acaraList, 'xlsx')}
+                className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-xl shadow-md shadow-emerald-600/20 transition-all"
+                title={`Muat turun senarai peserta bagi Rumah ${selectedRumah} (Excel)`}
+              >
+                <Download className="w-4 h-4 text-white" />
+                <span>Muat Turun Excel (Rumah {selectedRumah})</span>
+              </button>
+
+              {/* Mod Wizard jika perlu */}
+              <button
+                type="button"
+                onClick={() => setHouseViewMode('wizard')}
+                className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all"
+                title="Beralih ke mod pembantu pendaftaran 4 langkah"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Mod Wizard 4 Langkah</span>
+              </button>
+
+              {/* Kosongkan / Tukar Rumah Sukan */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRumah(null);
+                  setSelectedAcaraId(null);
+                  setSelectedKelas(null);
+                  setSelectedPesertaIds([]);
+                  setSimpananIdSet(new Set());
+                }}
+                className="cursor-pointer p-2 text-slate-500 hover:text-slate-800 hover:bg-white rounded-xl border border-transparent hover:border-slate-200 transition-all"
+                title="Tukar / Kosongkan Pilihan Rumah Sukan"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Jalur Statistik Ringkas */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-slate-500 block text-[11px] font-semibold">Acara Didaftar</span>
+              <span className="text-base font-extrabold text-emerald-700">
+                {housePendaftaran.length} <span className="text-xs font-normal text-slate-500">/ {acaraList.length} acara</span>
+              </span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-slate-500 block text-[11px] font-semibold">Peserta Terlibat</span>
+              <span className="text-base font-extrabold text-indigo-700">
+                {housePesertaTotal} <span className="text-xs font-normal text-slate-500">penyertaan</span>
+              </span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-slate-500 block text-[11px] font-semibold">Baki Acara Belum Isi</span>
+              <span className="text-base font-extrabold text-amber-700">
+                {Math.max(0, acaraList.length - housePendaftaran.length)} <span className="text-xs font-normal text-slate-500">acara</span>
+              </span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-slate-500 block text-[11px] font-semibold">Jumlah Murid Rumah</span>
+              <span className="text-base font-extrabold text-slate-800">
+                {houseMuridTotal} <span className="text-xs font-normal text-slate-500">orang</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Bar Tapisan & Carian */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Kotak Carian */}
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari acara, kod atau nama murid..."
+                  value={carianAcara}
+                  onChange={(e) => setCarianAcara(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-400 focus:outline-none"
+                />
+                {carianAcara && (
+                  <button
+                    type="button"
+                    onClick={() => setCarianAcara('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Tapisan Status (Semua / Didaftar / Belum) */}
+              <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-semibold shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('semua')}
+                  className={`cursor-pointer px-3 py-1 rounded-lg transition-all ${
+                    statusFilter === 'semua' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Semua Acara ({sortedAndFilteredAcara.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('didaftar')}
+                  className={`cursor-pointer px-3 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                    statusFilter === 'didaftar' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Sudah Didaftar ({housePendaftaran.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('belum')}
+                  className={`cursor-pointer px-3 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                    statusFilter === 'belum' ? 'bg-white text-amber-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span>Belum Didaftar ({Math.max(0, sortedAndFilteredAcara.length - housePendaftaran.length)})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Urutan Tahun */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              <span className="text-slate-400 font-bold uppercase text-[10px] mr-1 shrink-0 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-indigo-600" />
+                <span>Tahun:</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setTahunFilter('semua')}
+                className={`cursor-pointer px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
+                  tahunFilter === 'semua'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Semua Tahun
+              </button>
+
+              {[1, 2, 3, 4, 5, 6].map((th) => {
+                const isSelected = tahunFilter === th;
+                return (
+                  <button
+                    key={th}
+                    type="button"
+                    onClick={() => setTahunFilter(th)}
+                    className={`cursor-pointer px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Tahun {th}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setTahunFilter('padang')}
+                className={`cursor-pointer px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
+                  tahunFilter === 'padang'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Acara Padang
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTahunFilter('pra')}
+                className={`cursor-pointer px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
+                  tahunFilter === 'pra'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
+                }`}
+              >
+                Pra Sekolah
+              </button>
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* SENARAI ACARA & PESERTA YANG TELAH DISUSUN DENGAN JELAS */}
+          {/* ============================================================== */}
+          <div className="space-y-4">
+            {houseDisplayedAcara.length === 0 ? (
+              <div className="p-10 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <Trophy className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <div className="font-bold text-slate-700 text-sm">Tiada Acara Dijumpai</div>
+                <p className="mt-1">Tiada acara yang sepadan dengan tapisan yang dipilih.</p>
+              </div>
+            ) : (
+              houseDisplayedAcara.map((acara) => {
+                const reg = pendaftaranList.find(
+                  (p) => p.acaraId === acara.id && p.rumahSukan === selectedRumah
+                );
+                const isRegistered = !!reg;
+                const isGroup = acara.jenis === 'Berkumpulan';
+                const isSukaneka6 = isGroup && acara.bilanganAhli === 6;
+
+                return (
+                  <div
+                    key={acara.id}
+                    className={`rounded-2xl border transition-all overflow-hidden ${
+                      isRegistered
+                        ? 'border-emerald-300 bg-white shadow-xs ring-1 ring-emerald-200/50'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    {/* Header Acara */}
+                    <div
+                      className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b ${
+                        isRegistered ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50/70 border-slate-100'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-slate-700 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                            {acara.kod}
+                          </span>
+
+                          {acara.masa && (
+                            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-emerald-600" />
+                              {acara.masa}
+                            </span>
+                          )}
+
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            {acara.tahunKelayakan[0] === 0 ? 'Pra Sekolah' : `Tahun ${acara.tahunKelayakan.join(', ')}`}
+                          </span>
+
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              acara.kategoriJantina === 'Lelaki'
+                                ? 'bg-blue-100 text-blue-800'
+                                : acara.kategoriJantina === 'Perempuan'
+                                ? 'bg-pink-100 text-pink-800'
+                                : 'bg-purple-100 text-purple-800'
+                            }`}
+                          >
+                            {acara.kategoriJantina}
+                          </span>
+
+                          <span className="text-[10px] font-semibold text-slate-500">
+                            {acara.kategori} • {isSukaneka6 ? '6 Murid (5 Pemain + 1 Simpanan)' : isGroup ? `Kumpulan (${acara.bilanganAhli} Orang)` : 'Individu (1 Orang)'}
+                          </span>
+                        </div>
+
+                        <div className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                          <span>{acara.nama}</span>
+                          {acara.catatan && (
+                            <span className="text-xs font-normal text-amber-700 italic">
+                              ({acara.catatan})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Status & Butang Tindakan */}
+                      <div className="flex items-center gap-2 flex-wrap shrink-0">
+                        {isRegistered ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{reg.peserta.length} Peserta Didaftar</span>
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSlip(reg)}
+                              className="cursor-pointer inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                              title="Cetak slip format kad untuk acara ini"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>Cetak Slip</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenQuickRegister(acara)}
+                              className="cursor-pointer inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition-all"
+                              title="Kemaskini atau tambah peserta bagi acara ini"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Kemaskini Peserta</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePendaftaran(reg.id, acara.nama)}
+                              className="cursor-pointer p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-xl transition-colors"
+                              title="Padam pendaftaran acara ini"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-slate-500 bg-slate-100">
+                              Belum Didaftar
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenQuickRegister(acara)}
+                              className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 rounded-xl shadow-xs transition-all"
+                              title="Daftar peserta untuk acara ini"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Daftar Peserta</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Senarai Peserta di Bawah Acara */}
+                    {isRegistered ? (
+                      <div className="p-3.5 overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
+                            <tr>
+                              <th className="pb-2 px-2 w-10">Bil</th>
+                              <th className="pb-2 px-2 w-32">No. Peserta MSSR</th>
+                              <th className="pb-2 px-2">Nama Penuh Murid</th>
+                              <th className="pb-2 px-2 w-28">Kelas</th>
+                              <th className="pb-2 px-2 w-20">Jantina</th>
+                              <th className="pb-2 px-2 w-36">Peranan</th>
+                              <th className="pb-2 px-2 w-24 text-center">Tindakan</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {reg.peserta.map((peserta, pIdx) => {
+                              const isSimpanan =
+                                peserta.isSimpanan ||
+                                (peserta.peranan && peserta.peranan.toLowerCase().includes('simpanan'));
+
+                              return (
+                                <tr key={pIdx} className="hover:bg-slate-50/70 transition-colors">
+                                  <td className="py-2.5 px-2 font-mono text-slate-400 font-bold">{pIdx + 1}</td>
+                                  <td className="py-2.5 px-2">
+                                    <span className="font-mono font-bold text-indigo-700 bg-indigo-50/60 px-2 py-0.5 rounded border border-indigo-200/60">
+                                      {peserta.idPeserta || peserta.muridId}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-2">
+                                    <strong className="text-slate-900 text-xs">{peserta.nama}</strong>
+                                  </td>
+                                  <td className="py-2.5 px-2 text-slate-600">
+                                    {peserta.kelas}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-slate-600">
+                                    {peserta.jantina}
+                                  </td>
+                                  <td className="py-2.5 px-2">
+                                    <span
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                        isSimpanan
+                                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                          : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                      }`}
+                                    >
+                                      {peserta.peranan || (reg.peserta.length > 1 ? `Pelari ${pIdx + 1}` : 'Peserta Utama')}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-2 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenSlip(reg)}
+                                      className="cursor-pointer text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-1"
+                                      title="Cetak slip individu"
+                                    >
+                                      <Printer className="w-3 h-3" />
+                                      <span>Slip</span>
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-50/40 text-center text-xs text-slate-400 italic flex items-center justify-center gap-2">
+                        <span>Belum ada peserta didaftarkan untuk Rumah {selectedRumah} bagi acara ini.</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenQuickRegister(acara)}
+                          className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer not-italic text-xs"
+                        >
+                          + Klik untuk daftar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* LANGKAH 2: PILIHAN ACARA BERURUTAN (MOD WIZARD 4 LANGKAH) */}
+      {/* ============================================================== */}
+      {selectedRumah && houseViewMode === 'wizard' && (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 animate-fadeIn space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
@@ -941,8 +1541,17 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               </p>
             </div>
 
-            {/* Filter kategori & carian */}
+            {/* Filter kategori, carian & butang kembali ke senarai */}
             <div className="flex items-center gap-2 flex-wrap ml-9 md:ml-0">
+              <button
+                type="button"
+                onClick={() => setHouseViewMode('senarai')}
+                className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                title="Beralih ke paparan senarai acara dan peserta langsung"
+              >
+                <ListFilter className="w-3.5 h-3.5" />
+                <span>📋 Paparan Senarai Sahaja</span>
+              </button>
               <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
                 {(['Semua', 'Sukaneka', 'Balapan', 'Padang', 'Pra Sekolah'] as const).map((kat) => (
                   <button
@@ -1746,10 +2355,13 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       )}
 
       {/* Slip Modal Popup */}
-      {showSlipModal && lastSavedReg && (
+      {showSlipModal && (slipRegToPrint || lastSavedReg) && (
         <PrintableCardSlipModal
-          pendaftaran={lastSavedReg}
-          onClose={() => setShowSlipModal(false)}
+          pendaftaran={slipRegToPrint || lastSavedReg!}
+          onClose={() => {
+            setShowSlipModal(false);
+            setSlipRegToPrint(null);
+          }}
         />
       )}
 
@@ -1761,7 +2373,277 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
           pendaftaranList={pendaftaranList}
           acaraList={acaraList}
           muridList={muridList}
+          initialHouse={selectedRumah || lastSavedReg?.rumahSukan || 'SEMUA'}
+          initialAgeGroup={
+            lastSavedReg?.peserta?.[0]
+              ? lastSavedReg.peserta[0].tahun === 6
+                ? '12TKB'
+                : lastSavedReg.peserta[0].tahun === 5
+                ? '11TKB'
+                : lastSavedReg.peserta[0].tahun === 4
+                ? '10TKB'
+                : '9TKB'
+              : selectedAcara && selectedAcara.tahunKelayakan.includes(6)
+              ? '12TKB'
+              : selectedAcara && selectedAcara.tahunKelayakan.includes(5)
+              ? '11TKB'
+              : selectedAcara && selectedAcara.tahunKelayakan.includes(4)
+              ? '10TKB'
+              : selectedAcara && (selectedAcara.tahunKelayakan.includes(3) || selectedAcara.tahunKelayakan.includes(1) || selectedAcara.tahunKelayakan.includes(2))
+              ? '9TKB'
+              : '12TKB'
+          }
+          initialGender={
+            lastSavedReg?.peserta?.[0]?.jantina ||
+            (selectedAcara?.kategoriJantina === 'Perempuan' ? 'Perempuan' : 'Lelaki')
+          }
         />
+      )}
+
+      {/* Modal Pendaftaran Pantas Peserta bagi Acara dalam Mod Senarai */}
+      {quickRegisterAcara && selectedRumah && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+            {/* Header Modal */}
+            <div
+              className={`px-6 py-4 border-b flex items-center justify-between ${
+                SENARAI_RUMAH[selectedRumah].bgLightClass
+              } ${SENARAI_RUMAH[selectedRumah].borderClass}`}
+            >
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-white border border-slate-300 shadow-2xs">
+                    {quickRegisterAcara.kod}
+                  </span>
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    Daftar Peserta: {quickRegisterAcara.nama}
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-600">
+                  Rumah {selectedRumah} • {quickRegisterAcara.kategori} ({quickRegisterAcara.kategoriJantina}) •{' '}
+                  {quickRegisterAcara.tahunKelayakan[0] === 0
+                    ? 'Pra Sekolah'
+                    : `Tahun ${quickRegisterAcara.tahunKelayakan.join(', ')}`}{' '}
+                  •{' '}
+                  <strong className="text-indigo-800">
+                    {quickRegisterAcara.jenis === 'Berkumpulan'
+                      ? quickRegisterAcara.bilanganAhli === 6
+                        ? '6 Murid (5 Pemain + 1 Simpanan)'
+                        : `Kumpulan (${quickRegisterAcara.bilanganAhli} Orang)`
+                      : 'Individu (1 Orang)'}
+                  </strong>
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setQuickRegisterAcara(null)}
+                className="p-1.5 rounded-xl hover:bg-black/5 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tapisan Kelas & Carian Murid */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Tapis Mengikut Kelas</label>
+                <select
+                  value={quickSelectedKelas}
+                  onChange={(e) => setQuickSelectedKelas(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:outline-none"
+                >
+                  <option value="SEMUA">Semua Kelas Tahun {quickRegisterAcara.tahunKelayakan.join('/')}</option>
+                  {Array.from(
+                    new Set(
+                      muridList
+                        .filter(
+                          (m) =>
+                            m.rumahSukan === selectedRumah &&
+                            quickRegisterAcara.tahunKelayakan.includes(m.tahun)
+                        )
+                        .map((m) => m.kelas)
+                    )
+                  )
+                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+                    .map((k) => (
+                      <option key={k} value={k}>
+                        {k}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Cari Nama / No. Murid</label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Nama murid..."
+                    value={quickCarianMurid}
+                    onChange={(e) => setQuickCarianMurid(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl focus:outline-none"
+                  />
+                  {quickCarianMurid && (
+                    <button
+                      type="button"
+                      onClick={() => setQuickCarianMurid('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Senarai Calon Murid */}
+            <div className="p-4 overflow-y-auto flex-1 space-y-2 max-h-[380px]">
+              {quickEligibleCandidates.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <div className="font-bold text-slate-700">Tiada Murid Ditemui</div>
+                  <p className="mt-1">
+                    Tiada murid Rumah {selectedRumah} yang sepadan dengan kriteria tahun dan jantina acara ini.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddStudentModal(true);
+                    }}
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Daftar Murid Baharu</span>
+                  </button>
+                </div>
+              ) : (
+                quickEligibleCandidates.map((murid) => {
+                  const isChecked = quickSelectedPesertaIds.includes(murid.id);
+                  const isSimpanan = quickSimpananIdSet.has(murid.id);
+                  const isGroup = quickRegisterAcara.jenis === 'Berkumpulan';
+                  const maxSlots = quickRegisterAcara.bilanganAhli || 1;
+
+                  return (
+                    <div
+                      key={murid.id}
+                      onClick={() => {
+                        if (isChecked) {
+                          setQuickSelectedPesertaIds((prev) => prev.filter((id) => id !== murid.id));
+                          setQuickSimpananIdSet((prev) => {
+                            const next = new Set(prev);
+                            next.delete(murid.id);
+                            return next;
+                          });
+                        } else {
+                          if (quickRegisterAcara.jenis === 'Individu') {
+                            setQuickSelectedPesertaIds([murid.id]);
+                            setQuickSimpananIdSet(new Set());
+                          } else {
+                            if (quickSelectedPesertaIds.length >= maxSlots) {
+                              alert(`Maksimum ${maxSlots} peserta sahaja bagi acara ini.`);
+                              return;
+                            }
+                            setQuickSelectedPesertaIds((prev) => [...prev, murid.id]);
+                          }
+                        }
+                      }}
+                      className={`cursor-pointer p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                        isChecked
+                          ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-300 shadow-2xs'
+                          : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${
+                            isChecked
+                              ? 'bg-indigo-600 border-indigo-600 text-white'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
+
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                            <span>{murid.nama}</span>
+                            <span className="font-mono text-[10px] text-indigo-700 bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                              {murid.id}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {murid.kelas} • {murid.tahun === 0 ? 'Pra Sekolah' : `Tahun ${murid.tahun}`} • {murid.jantina}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Simpanan toggle if checked and is group event */}
+                      {isChecked && isGroup && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQuickSimpananIdSet((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(murid.id)) {
+                                next.delete(murid.id);
+                              } else {
+                                next.add(murid.id);
+                              }
+                              return next;
+                            });
+                          }}
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all ${
+                            isSimpanan
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          }`}
+                          title="Klik untuk tukar peranan antara Pemain Utama dan Simpanan"
+                        >
+                          {isSimpanan ? '★ Simpanan' : '✓ Pemain Utama'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-slate-600">
+                Dipilih:{' '}
+                <strong className="text-slate-900 text-sm">{quickSelectedPesertaIds.length}</strong>
+                {quickRegisterAcara.jenis === 'Berkumpulan' ? (
+                  <span> / {quickRegisterAcara.bilanganAhli} peserta ({quickSelectedPesertaIds.length - quickSimpananIdSet.size} utama + {quickSimpananIdSet.size} simpanan)</span>
+                ) : (
+                  <span> peserta (Individu)</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickRegisterAcara(null)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-100 text-xs font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuickRegister}
+                  disabled={quickSelectedPesertaIds.length === 0}
+                  className="cursor-pointer px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>Simpan Pendaftaran ({quickSelectedPesertaIds.length} Murid)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal Daftar Murid Baharu Secara Pantas */}

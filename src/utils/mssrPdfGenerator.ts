@@ -14,6 +14,40 @@ export interface GenerateMssrPdfOptions {
 }
 
 /**
+ * Format label Kategori rasmi MSSR (9TKB, 10TKB, 11TKB, 12TKB).
+ * Mengelakkan label seperti 'SEMUA SEMUA'.
+ */
+export function formatMssrKategori(ageGroup: MssrAgeGroup, gender: MssrGender): string {
+  let ageLabel = '';
+  switch (ageGroup) {
+    case '9TKB':
+      ageLabel = '9TKB';
+      break;
+    case '10TKB':
+      ageLabel = '10TKB';
+      break;
+    case '11TKB':
+      ageLabel = '11TKB';
+      break;
+    case '12TKB':
+      ageLabel = '12TKB';
+      break;
+    case 'SEMUA':
+    default:
+      ageLabel = '9TKB 10TKB 11TKB 12TKB';
+      break;
+  }
+
+  if (gender === 'Lelaki') {
+    return `${ageLabel} (LELAKI)`;
+  }
+  if (gender === 'Perempuan') {
+    return `${ageLabel} (PEREMPUAN)`;
+  }
+  return ageLabel;
+}
+
+/**
  * Menjana dan memuat turun fail PDF Landskap bagi Borang Pendaftaran Rasmi MSSR 2026.
  * Menggunakan format A4 Landskap (297mm x 210mm) dengan susun atur rasmi kejohanan.
  */
@@ -41,25 +75,25 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
 
   // 1. Header Borang Rasmi
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(12.5);
   doc.setTextColor(0, 0, 0);
   doc.text('BORANG PENDAFTARAN KONTINGEN BALAPAN DAN PADANG MSSR 2026', pageWidth / 2, currentY, { align: 'center' });
 
   currentY += 4.5;
-  doc.setFontSize(9.5);
+  doc.setFontSize(10.5);
   doc.text(eventDates.toUpperCase(), pageWidth / 2, currentY, { align: 'center' });
 
   currentY += 4;
   doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.text('( SILA TANDAKAN X UNTUK ACARA YANG ANDA INGIN DAFTAR – PESERTA SIMPANAN TANDAKAN (S) )', pageWidth / 2, currentY, { align: 'center' });
 
-  currentY += 3.8;
+  currentY += 4;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
+  doc.setFontSize(8.5);
   doc.text('SETIAP ACARA INDIVIDU HANYA BOLEH DAFTAR DUA PESERTA.', pageWidth / 2, currentY, { align: 'center' });
 
-  currentY += 3.5;
+  currentY += 3.8;
   doc.text('(12&11TKB) ACARA INDIVIDU = 2, ACARA RELAY = 2 ) (10TKB: 2 INDIVIDU: 1 RELAY)', pageWidth / 2, currentY, { align: 'center' });
 
   currentY += 3.5;
@@ -73,35 +107,35 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
 
   // 2. Maklumat Sekolah, Kumpulan & Kategori
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(9.5);
 
   const kumpulanLabel = houseName === 'SEMUA' ? 'KONTINGEN KESELURUHAN' : `RUMAH ${houseName.toUpperCase()}`;
-  const kategoriLabel = `${gender.toUpperCase()} ${ageGroup}`;
+  const kategoriLabel = formatMssrKategori(ageGroup, gender);
 
   // Kiri
   doc.text(`NAMA SEKOLAH :  ${schoolName.toUpperCase()}`, marginX, currentY);
-  doc.text(`KUMPULAN         :  ${kumpulanLabel}`, marginX, currentY + 4);
+  doc.text(`KUMPULAN         :  ${kumpulanLabel}`, marginX, currentY + 4.5);
 
   // Kanan
-  doc.text(`Kategori :  ${kategoriLabel}`, pageWidth - marginX - 75, currentY);
+  doc.text(`Kategori :  ${kategoriLabel}`, pageWidth - marginX - 80, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.text(locationInfo, pageWidth - marginX - 75, currentY + 4);
+  doc.setFontSize(8.5);
+  doc.text(locationInfo, pageWidth - marginX - 80, currentY + 4.5);
 
-  currentY += 6.5;
+  currentY += 7;
 
   // Garisan pemisah bawah maklumat
   doc.line(marginX, currentY, pageWidth - marginX, currentY);
   currentY += 2;
 
   // 3. Persediaan Kolum Jadual
-  // Baris Header 1 (Bil, No Peserta, Nama, Tarikh Lahir, No Sijil, Acara)
+  // Baris Header 1 (Bil, No Peserta, Nama, Tarikh Lahir, No. Pengenalan, Acara)
   const headRow1: any[] = [
     { content: 'Bil', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
     { content: 'Nombor Peserta', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
     { content: 'Nama Peserta', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
     { content: 'Tarikh Lahir', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
-    { content: 'No. Sijil Lahir', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+    { content: 'No. Pengenalan', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
     { content: 'Acara', colSpan: 10, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold' } },
   ];
 
@@ -115,7 +149,7 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
         valign: 'middle',
         fillColor: isShaded ? [71, 85, 105] : [248, 250, 252], // Shaded slate jika tidak berkenaan
         textColor: isShaded ? [255, 255, 255] : [0, 0, 0],
-        fontSize: 7,
+        fontSize: 8.5,
       },
     };
   });
@@ -123,12 +157,17 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
   // Baris Data Peserta
   const bodyRows: any[] = displayRows.map((row) => {
     const p = row.data;
+    const nameContent =
+      p.acaraLain && p.acaraLain.length > 0 && Object.keys(p.eventTicks || {}).length === 0
+        ? `${p.nama || ''}\n[${p.acaraLain.join(', ')}]`
+        : p.nama || '';
+
     const rowCells: any[] = [
       { content: String(row.bil), styles: { halign: 'center', fontStyle: 'bold' } },
       { content: p.idPeserta || '', styles: { halign: 'center', fontStyle: 'bold' } },
-      { content: p.nama || '', styles: { halign: 'left', fontStyle: 'bold' } },
+      { content: nameContent, styles: { halign: 'left', fontStyle: 'bold' } },
       { content: p.tarikhLahir || '', styles: { halign: 'center' } },
-      { content: p.noSijilLahir || '', styles: { halign: 'center' } },
+      { content: p.noPengenalan || p.noSijilLahir || '', styles: { halign: 'center' } },
     ];
 
     // Masukkan tanda 10 acara
@@ -150,7 +189,7 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
           styles: {
             halign: 'center',
             fontStyle: 'bold',
-            fontSize: mark === 'X' ? 8.5 : 7,
+            fontSize: mark === 'X' ? 11.5 : 9,
             textColor: mark === '(S)' ? [49, 46, 129] : [0, 0, 0],
           },
         });
@@ -160,7 +199,7 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
     return rowCells;
   });
 
-  // Bina Jadual autoTable
+  // Bina Jadual autoTable dengan saiz font yang lebih besar dan jelas dibaca
   autoTable(doc, {
     startY: currentY,
     margin: { left: marginX, right: marginX, bottom: 25 },
@@ -168,19 +207,20 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
     body: bodyRows,
     theme: 'grid',
     styles: {
-      lineWidth: 0.2,
+      lineWidth: 0.25,
       lineColor: [0, 0, 0],
       textColor: [0, 0, 0],
-      fontSize: 7.5,
-      cellPadding: 1.2,
-      minCellHeight: 6,
+      fontSize: 9.2,
+      cellPadding: 1.5,
+      minCellHeight: 6.8,
       overflow: 'ellipsize',
     },
     headStyles: {
       fillColor: [241, 245, 249],
       textColor: [0, 0, 0],
       fontStyle: 'bold',
-      lineWidth: 0.2,
+      fontSize: 8.8,
+      lineWidth: 0.25,
       lineColor: [0, 0, 0],
     },
     columnStyles: {
@@ -188,7 +228,7 @@ export function generateMssrLandscapePdf(options: GenerateMssrPdfOptions) {
       1: { cellWidth: 23 },  // Nombor Peserta
       2: { cellWidth: 67 },  // Nama Peserta
       3: { cellWidth: 20 },  // Tarikh Lahir
-      4: { cellWidth: 28 },  // No. Sijil Lahir
+      4: { cellWidth: 28 },  // No. Pengenalan
       // 10 Acara MSSR: masing-masing 13mm = 130mm
       5: { cellWidth: 13 },
       6: { cellWidth: 13 },
@@ -328,19 +368,19 @@ export function generateFullMssrTournamentPdfBundle(options: {
 
     // Maklumat
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
+    doc.setFontSize(9.5);
     const kumpulanLabel = houseName === 'SEMUA' ? 'KONTINGEN KESELURUHAN' : `RUMAH ${houseName.toUpperCase()}`;
-    const kategoriLabel = `${group.gender.toUpperCase()} ${group.ageGroup}`;
+    const kategoriLabel = formatMssrKategori(group.ageGroup, group.gender);
 
     doc.text(`NAMA SEKOLAH :  ${schoolName.toUpperCase()}`, marginX, currentY);
-    doc.text(`KUMPULAN         :  ${kumpulanLabel}`, marginX, currentY + 4);
+    doc.text(`KUMPULAN         :  ${kumpulanLabel}`, marginX, currentY + 4.5);
 
-    doc.text(`Kategori :  ${kategoriLabel}`, pageWidth - marginX - 75, currentY);
+    doc.text(`Kategori :  ${kategoriLabel}`, pageWidth - marginX - 80, currentY);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text('MSSR Bahagian Miri • Zon Bandar', pageWidth - marginX - 75, currentY + 4);
+    doc.setFontSize(8.5);
+    doc.text('MSSR Bahagian Miri • Zon Bandar', pageWidth - marginX - 80, currentY + 4.5);
 
-    currentY += 6.5;
+    currentY += 7;
     doc.line(marginX, currentY, pageWidth - marginX, currentY);
     currentY += 2;
 
@@ -350,7 +390,7 @@ export function generateFullMssrTournamentPdfBundle(options: {
       { content: 'Nombor Peserta', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
       { content: 'Nama Peserta', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
       { content: 'Tarikh Lahir', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
-      { content: 'No. Sijil Lahir', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+      { content: 'No. Pengenalan', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
       { content: 'Acara', colSpan: 10, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold' } },
     ];
 
@@ -363,19 +403,24 @@ export function generateFullMssrTournamentPdfBundle(options: {
           valign: 'middle',
           fillColor: isShaded ? [71, 85, 105] : [248, 250, 252],
           textColor: isShaded ? [255, 255, 255] : [0, 0, 0],
-          fontSize: 7,
+          fontSize: 8.5,
         },
       };
     });
 
     const bodyRows: any[] = group.rows.map((row) => {
       const p = row.data;
+      const nameContent =
+        p.acaraLain && p.acaraLain.length > 0 && Object.keys(p.eventTicks || {}).length === 0
+          ? `${p.nama || ''}\n[${p.acaraLain.join(', ')}]`
+          : p.nama || '';
+
       const rowCells: any[] = [
         { content: String(row.bil), styles: { halign: 'center', fontStyle: 'bold' } },
         { content: p.idPeserta || '', styles: { halign: 'center', fontStyle: 'bold' } },
-        { content: p.nama || '', styles: { halign: 'left', fontStyle: 'bold' } },
+        { content: nameContent, styles: { halign: 'left', fontStyle: 'bold' } },
         { content: p.tarikhLahir || '', styles: { halign: 'center' } },
-        { content: p.noSijilLahir || '', styles: { halign: 'center' } },
+        { content: p.noPengenalan || p.noSijilLahir || '', styles: { halign: 'center' } },
       ];
 
       MSSR_COLUMNS.forEach((col) => {
@@ -393,7 +438,7 @@ export function generateFullMssrTournamentPdfBundle(options: {
             styles: {
               halign: 'center',
               fontStyle: 'bold',
-              fontSize: mark === 'X' ? 8.5 : 7,
+              fontSize: mark === 'X' ? 11.5 : 9,
               textColor: mark === '(S)' ? [49, 46, 129] : [0, 0, 0],
             },
           });
@@ -410,17 +455,18 @@ export function generateFullMssrTournamentPdfBundle(options: {
       body: bodyRows,
       theme: 'grid',
       styles: {
-        lineWidth: 0.2,
+        lineWidth: 0.25,
         lineColor: [0, 0, 0],
         textColor: [0, 0, 0],
-        fontSize: 7.5,
-        cellPadding: 1.2,
-        minCellHeight: 6,
+        fontSize: 9.2,
+        cellPadding: 1.5,
+        minCellHeight: 6.8,
       },
       headStyles: {
         fillColor: [241, 245, 249],
         textColor: [0, 0, 0],
         fontStyle: 'bold',
+        fontSize: 8.8,
       },
       columnStyles: {
         0: { cellWidth: 9 },

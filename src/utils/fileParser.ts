@@ -32,25 +32,54 @@ function normalizeHeader(rawHeader: string): string {
     return 'nama';
   }
 
-  // 2. ID Murid / No KP / No Matrik / No Pendaftaran
+  // 2. No. Pengenalan / MyKid / No. Kad Pengenalan / No. Sijil Lahir
+  if (
+    clean.includes('pengenalan') ||
+    clean.includes('mykid') ||
+    clean.includes('sijillahir') ||
+    clean.includes('sijil') ||
+    clean.includes('nokp') ||
+    clean.includes('kadpengenalan') ||
+    clean.includes('icno') ||
+    clean.includes('nric') ||
+    clean.includes('sbno') ||
+    lower.includes('no pengenalan') ||
+    lower.includes('no. pengenalan') ||
+    lower.includes('no kp') ||
+    lower.includes('no. kp') ||
+    lower.includes('no sijil') ||
+    lower.includes('no. sijil')
+  ) {
+    return 'noPengenalan';
+  }
+
+  // 2b. Tarikh Lahir (DOB)
+  if (
+    clean.includes('tarikhlahir') ||
+    clean.includes('tlahir') ||
+    clean.includes('dob') ||
+    clean.includes('birthdate') ||
+    clean.includes('birthday') ||
+    (clean.includes('tarikh') && clean.includes('lahir')) ||
+    lower.includes('tarikh lahir') ||
+    lower.includes('t.lahir')
+  ) {
+    return 'tarikhLahir';
+  }
+
+  // 2c. ID Murid / Kod Murid / No Matrik / No Pendaftaran
   if (
     clean === 'id' ||
     clean === 'idmurid' ||
     clean === 'idpelajar' ||
     clean === 'studentid' ||
     clean === 'studentno' ||
-    clean.includes('nokp') ||
-    clean.includes('kadpengenalan') ||
-    clean.includes('icno') ||
-    clean.includes('nric') ||
     clean.includes('matrik') ||
     clean.includes('pendaftaran') ||
     clean.includes('kodmurid') ||
     lower.includes('id murid') ||
     lower.includes('no id') ||
     lower.includes('no. id') ||
-    lower.includes('no kp') ||
-    lower.includes('no. kp') ||
     lower.includes('no matrik') ||
     lower.includes('no. matrik') ||
     lower.includes('no daftar')
@@ -201,7 +230,7 @@ function parseSingleSheet(
       const cellText = String(cell ?? '').trim();
       if (!cellText) return;
       const normalized = normalizeHeader(cellText);
-      if (['nama', 'idMurid', 'tahun', 'kelas', 'jantina', 'rumahSukan'].includes(normalized)) {
+      if (['nama', 'idMurid', 'noPengenalan', 'tarikhLahir', 'tahun', 'kelas', 'jantina', 'rumahSukan'].includes(normalized)) {
         recognizedSet.add(normalized);
         rowHeaderMap[idx] = normalized;
       } else if (normalized === 'bil') {
@@ -253,9 +282,11 @@ function parseSingleSheet(
     const rawKelas = rowData.kelas || '';
     let rawJantina = rowData.jantina || '';
     let rawRumah = selectedRumahOverride || rowData.rumahSukan || sheetRumahSukanDefault || '';
+    const rawNoPengenalan = rowData.noPengenalan || '';
+    const rawTarikhLahir = rowData.tarikhLahir || '';
 
     // If completely empty row data extracted, skip
-    if (!rawId && !rawNama && !rawTahun && !rawKelas) {
+    if (!rawId && !rawNama && !rawTahun && !rawKelas && !rawNoPengenalan) {
       continue;
     }
 
@@ -372,6 +403,9 @@ function parseSingleSheet(
       kelas: rawKelas,
       jantina: validatedJantina ?? rawJantina,
       rumahSukan: validatedRumah,
+      tarikhLahir: rawTarikhLahir || undefined,
+      noPengenalan: rawNoPengenalan || undefined,
+      noSijilLahir: rawNoPengenalan || undefined,
       ralat: errors,
       amaran: warnings,
       status,
@@ -458,12 +492,14 @@ export async function parseMuridFile(
 
 // Generate template data as Excel or CSV
 export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: RumahSukan | null): void {
-  const headers = ['ID Murid', 'Nama Murid', 'Tahun', 'Kelas', 'Jantina', 'Rumah Sukan'];
+  const headers = ['ID Murid', 'Nama Murid', 'No. Pengenalan', 'Tarikh Lahir', 'Tahun', 'Kelas', 'Jantina', 'Rumah Sukan'];
 
   const sampleRows = [
     {
       'ID Murid': '', // ID Murid pilihan - akan dijana automatik semasa murid dipilih untuk acara
       'Nama Murid': 'Muhammad Daniyal bin Azman',
+      'No. Pengenalan': '200115-13-1111',
+      'Tarikh Lahir': '15/01/2020',
       'Tahun': 0,
       'Kelas': 'Pra Cekal',
       'Jantina': 'Lelaki',
@@ -472,6 +508,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '', // ID Murid pilihan - akan dijana automatik semasa murid dipilih untuk acara
       'Nama Murid': 'Nur Arissa Sofea binti Hamdan',
+      'No. Pengenalan': '200420-13-2222',
+      'Tarikh Lahir': '20/04/2020',
       'Tahun': 0,
       'Kelas': 'Pra Dinamik',
       'Jantina': 'Perempuan',
@@ -480,6 +518,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Ahmad Danish bin Rosli',
+      'No. Pengenalan': '170312-13-3333',
+      'Tarikh Lahir': '12/03/2017',
       'Tahun': 3,
       'Kelas': '3 Fleksibel',
       'Jantina': 'Lelaki',
@@ -488,6 +528,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Muhammad Harith bin Zamri',
+      'No. Pengenalan': '170825-13-4444',
+      'Tarikh Lahir': '25/08/2017',
       'Tahun': 3,
       'Kelas': '3 Arif',
       'Jantina': 'Lelaki',
@@ -496,6 +538,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Nur Ain binti Zulkifli',
+      'No. Pengenalan': '171109-13-5555',
+      'Tarikh Lahir': '09/11/2017',
       'Tahun': 3,
       'Kelas': '3 Bestari',
       'Jantina': 'Perempuan',
@@ -504,6 +548,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Muhammad Adam Rayyan',
+      'No. Pengenalan': '190614-13-6666',
+      'Tarikh Lahir': '14/06/2019',
       'Tahun': 1,
       'Kelas': '1 Cekal',
       'Jantina': 'Lelaki',
@@ -512,6 +558,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Siti Nur Aisyah binti Latif',
+      'No. Pengenalan': '180218-13-7777',
+      'Tarikh Lahir': '18/02/2018',
       'Tahun': 2,
       'Kelas': '2 Dinamik',
       'Jantina': 'Perempuan',
@@ -520,6 +568,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Chong Jin Wei',
+      'No. Pengenalan': '170505-13-8888',
+      'Tarikh Lahir': '05/05/2017',
       'Tahun': 3,
       'Kelas': '3 Cekal',
       'Jantina': 'Lelaki',
@@ -528,6 +578,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Bryan Lee Jun Hao',
+      'No. Pengenalan': '160719-13-9999',
+      'Tarikh Lahir': '19/07/2016',
       'Tahun': 4,
       'Kelas': '4 Dinamik',
       'Jantina': 'Lelaki',
@@ -536,6 +588,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Zarif Irfan bin Zaidi',
+      'No. Pengenalan': '150923-13-1010',
+      'Tarikh Lahir': '23/09/2015',
       'Tahun': 5,
       'Kelas': '5 Efisien',
       'Jantina': 'Lelaki',
@@ -544,6 +598,8 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
     {
       'ID Murid': '',
       'Nama Murid': 'Farah Nabilah binti Khairul',
+      'No. Pengenalan': '140402-13-2020',
+      'Tarikh Lahir': '02/04/2014',
       'Tahun': 6,
       'Kelas': '6 Fleksibel',
       'Jantina': 'Perempuan',
@@ -555,12 +611,14 @@ export function downloadTemplate(format: 'xlsx' | 'csv', rumahSukanPrefix?: Ruma
 
   // Column widths
   ws['!cols'] = [
-    { wch: 14 },
-    { wch: 32 },
-    { wch: 8 },
-    { wch: 16 },
-    { wch: 12 },
-    { wch: 15 },
+    { wch: 14 }, // ID Murid
+    { wch: 32 }, // Nama Murid
+    { wch: 18 }, // No. Pengenalan
+    { wch: 14 }, // Tarikh Lahir
+    { wch: 8 },  // Tahun
+    { wch: 16 }, // Kelas
+    { wch: 12 }, // Jantina
+    { wch: 15 }, // Rumah Sukan
   ];
 
   const wb = XLSX.utils.book_new();
@@ -582,6 +640,8 @@ export function exportMuridToExcel(muridList: Murid[], format: 'xlsx' | 'csv' = 
   const data = muridList.map((m) => ({
     'ID Murid': m.id,
     'Nama Murid': m.nama,
+    'No. Pengenalan': m.noPengenalan || m.noSijilLahir || '',
+    'Tarikh Lahir': m.tarikhLahir || '',
     'Tahun': m.tahun,
     'Kelas': m.kelas,
     'Jantina': m.jantina,
@@ -592,6 +652,8 @@ export function exportMuridToExcel(muridList: Murid[], format: 'xlsx' | 'csv' = 
   ws['!cols'] = [
     { wch: 14 },
     { wch: 32 },
+    { wch: 18 },
+    { wch: 14 },
     { wch: 8 },
     { wch: 16 },
     { wch: 12 },

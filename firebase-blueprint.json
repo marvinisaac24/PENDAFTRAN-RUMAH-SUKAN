@@ -34,6 +34,18 @@
           "description": "Rumah sukan murid",
           "enum": ["Merah", "Kuning", "Hijau", "Biru"]
         },
+        "noPengenalan": {
+          "type": "string",
+          "description": "No. Pengenalan / MyKid murid"
+        },
+        "noSijilLahir": {
+          "type": "string",
+          "description": "No. Sijil Lahir murid"
+        },
+        "tarikhLahir": {
+          "type": "string",
+          "description": "Tarikh Lahir murid (DD/MM/YYYY)"
+        },
         "tarikhKemaskini": {
           "type": "string",
           "description": "Tarikh kemaskini rekod"

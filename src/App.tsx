@@ -22,7 +22,7 @@ import { EventSettings } from './components/EventSettings';
 import { GlobalSearchBar } from './components/GlobalSearchBar';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'pendaftaran' | 'senarai' | 'muatnaik' | 'murid' | 'dashboard' | 'tetapan'>('pendaftaran');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'pendaftaran' | 'senarai' | 'muatnaik' | 'murid' | 'tetapan'>('dashboard');
   const [muridList, setMuridList] = useState<Murid[]>([]);
   const [acaraList, setAcaraList] = useState<AcaraSukan[]>([]);
   const [pendaftaranList, setPendaftaranList] = useState<PendaftaranAcara[]>([]);
@@ -109,6 +109,21 @@ export default function App() {
 
           {/* Navigation Tabs Bar */}
           <div className="flex items-center gap-2 overflow-x-auto py-2 -mb-px border-t border-slate-100 text-xs sm:text-sm font-semibold">
+            {/* 1. Dashboard Ringkasan (Halaman Utama) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('dashboard')}
+              className={`cursor-pointer flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'dashboard'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span>1. Dashboard Ringkasan (Utama)</span>
+            </button>
+
+            {/* 2. Pendaftaran Guru */}
             <button
               type="button"
               onClick={() => setActiveTab('pendaftaran')}
@@ -119,9 +134,10 @@ export default function App() {
               }`}
             >
               <Trophy className="w-4 h-4" />
-              <span>1. Pendaftaran Guru (4 Langkah)</span>
+              <span>2. Pendaftaran Guru (Pilih Rumah Sukan)</span>
             </button>
 
+            {/* 3. Senarai Pendaftaran & Slip */}
             <button
               type="button"
               onClick={() => setActiveTab('senarai')}
@@ -132,22 +148,10 @@ export default function App() {
               }`}
             >
               <ClipboardList className="w-4 h-4" />
-              <span>2. Senarai Pendaftaran & Slip ({pendaftaranList.length})</span>
+              <span>3. Senarai Pendaftaran & Slip ({pendaftaranList.length})</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('muatnaik')}
-              className={`cursor-pointer flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all whitespace-nowrap ${
-                activeTab === 'muatnaik'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>3. Muat Naik Pentadbir (Excel / CSV)</span>
-            </button>
-
+            {/* 4. Pengurusan Murid */}
             <button
               type="button"
               onClick={() => setActiveTab('murid')}
@@ -161,19 +165,21 @@ export default function App() {
               <span>4. Pengurusan Murid ({muridList.length})</span>
             </button>
 
+            {/* 5. Muat Naik Pentadbir */}
             <button
               type="button"
-              onClick={() => setActiveTab('dashboard')}
+              onClick={() => setActiveTab('muatnaik')}
               className={`cursor-pointer flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all whitespace-nowrap ${
-                activeTab === 'dashboard'
+                activeTab === 'muatnaik'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>5. Dashboard Ringkasan</span>
+              <UploadCloud className="w-4 h-4" />
+              <span>5. Muat Naik Pentadbir (Excel / CSV)</span>
             </button>
 
+            {/* 6. Tetapan Acara */}
             <button
               type="button"
               onClick={() => setActiveTab('tetapan')}

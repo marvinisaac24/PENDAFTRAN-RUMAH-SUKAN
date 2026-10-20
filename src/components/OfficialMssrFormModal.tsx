@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Printer,
   X,
@@ -24,6 +24,7 @@ import { SENARAI_RUMAH, SENARAI_RUMAH_KEYS } from '../data/constants';
 import {
   generateMssrLandscapePdf,
   generateFullMssrTournamentPdfBundle,
+  formatMssrKategori,
 } from '../utils/mssrPdfGenerator';
 
 interface OfficialMssrFormModalProps {
@@ -32,6 +33,9 @@ interface OfficialMssrFormModalProps {
   pendaftaranList: PendaftaranAcara[];
   acaraList: AcaraSukan[];
   muridList: Murid[];
+  initialHouse?: string;
+  initialAgeGroup?: MssrAgeGroup;
+  initialGender?: MssrGender;
 }
 
 export type MssrAgeGroup = '12TKB' | '11TKB' | '10TKB' | '9TKB' | 'SEMUA';
@@ -164,8 +168,10 @@ export interface MssrParticipantRowData {
   jantina: string;
   rumahSukan: RumahSukan | string;
   tarikhLahir: string;
+  noPengenalan?: string;
   noSijilLahir: string;
   eventTicks: Record<string, 'X' | '(S)' | string>;
+  acaraLain?: string[];
 }
 
 export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
@@ -174,26 +180,75 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
   pendaftaranList,
   acaraList,
   muridList,
+  initialHouse,
+  initialAgeGroup,
+  initialGender,
 }) => {
-  const [selectedHouse, setSelectedHouse] = useState<string>('SEMUA');
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState<MssrAgeGroup>('12TKB');
-  const [selectedGender, setSelectedGender] = useState<MssrGender>('Lelaki');
+  const [selectedHouse, setSelectedHouse] = useState<string>(initialHouse || 'SEMUA');
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<MssrAgeGroup>(initialAgeGroup || '12TKB');
+  const [selectedGender, setSelectedGender] = useState<MssrGender>(initialGender || 'Lelaki');
   const [minRows, setMinRows] = useState<number>(10); // Minimum 10 baris seperti borang asal
+
+  // Kemaskini state jika props initial berubah semasa modal dibuka
+  useEffect(() => {
+    if (initialHouse) setSelectedHouse(initialHouse);
+    if (initialAgeGroup) setSelectedAgeGroup(initialAgeGroup);
+    if (initialGender) setSelectedGender(initialGender);
+  }, [initialHouse, initialAgeGroup, initialGender]);
 
   // Simpanan data edit manual (Tarikh Lahir & No Sijil Lahir) jika pengguna ingin melengkapkan
   const [manualEdits, setManualEdits] = useState<Record<string, { tarikhLahir?: string; noSijil?: string }>>({});
 
   if (!isOpen) return null;
 
-  // 1. Peta murid berdasarkan ID untuk carian pantas
-  const muridMap = new Map<string, Murid>();
-  muridList.forEach((m) => muridMap.set(m.id, m));
+  // 1. Peta murid berdasarkan ID dan Nama untuk carian pantas O(1) tanpa lengah
+  const { muridById, muridByName } = useMemo(() => {
+    const byId = new Map<string, Murid>();
+    const byName = new Map<string, Murid>();
+    muridList.forEach((m) => {
+      if (m.id) byId.set(m.id.trim().toUpperCase(), m);
+      if (m.nama) byName.set(m.nama.trim().toUpperCase(), m);
+    });
+    return { muridById: byId, muridByName: byName };
+  }, [muridList]);
+
+  // Helper pemformatan tarikh lahir kepada DD/MM/YYYY
+  const formatTarikhLahir = useCallback((val?: string): string => {
+    if (!val) return '';
+    const clean = val.trim();
+    // Padankan format ISO YYYY-MM-DD atau YYYY/MM/DD
+    const isoMatch = clean.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      const [, y, m, d] = isoMatch;
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+    return clean;
+  }, []);
+
+  // Helper pengesanan tarikh lahir dari MyKid/IC Malaysia (cth: 140512-13-1234 -> 12/05/2014)
+  const extractDobFromIc = useCallback((ic?: string): string => {
+    if (!ic) return '';
+    const digits = ic.replace(/\D/g, '');
+    if (digits.length >= 6) {
+      const yy = parseInt(digits.slice(0, 2), 10);
+      const mm = digits.slice(2, 4);
+      const dd = digits.slice(4, 6);
+      const mNum = parseInt(mm, 10);
+      const dNum = parseInt(dd, 10);
+      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+        const fullYear = yy <= 30 ? 2000 + yy : 1900 + yy;
+        return `${dd}/${mm}/${fullYear}`;
+      }
+    }
+    return '';
+  }, []);
 
   // 2. Tahun yang sepadan dengan Kumpulan Umur MSSR 2026:
   // 12TKB = Tahun 6 (Lahir 2014)
   // 11TKB = Tahun 5 (Lahir 2015)
   // 10TKB = Tahun 4 (Lahir 2016)
-  // 9TKB  = Tahun 3 (Lahir 2017)
+  // 9TKB  = Tahun 1, 2, 3 (Bawah 9 Tahun)
+  // SEMUA = Semua Murid (Tahun 0 hingga 6)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
   // Helper untuk mendapatkan tahun-tahun kelayakan bagi kumpulan umur
@@ -206,14 +261,14 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
       case '10TKB':
         return [4];
       case '9TKB':
-        return [3];
+        return [1, 2, 3];
       case 'SEMUA':
       default:
-        return [3, 4, 5, 6];
+        return [0, 1, 2, 3, 4, 5, 6];
     }
   }, []);
 
-  // Fungsi menjana baris data peserta bagi mana-mana kategori
+  // Fungsi menjana baris data peserta bagi mana-mana kategori dengan enjin berprestasi tinggi
   const computeRowsForCategory = useCallback(
     (ag: MssrAgeGroup, g: MssrGender, h: string, minR: number = 10) => {
       const allowedYears = getYearsForAgeGroup(ag);
@@ -228,18 +283,41 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
         }
 
         const matchedCol = MSSR_COLUMNS.find((col) => col.matcher(reg.acaraNama));
-        if (!matchedCol) return;
 
         reg.peserta.forEach((p) => {
           if (g !== 'SEMUA' && p.jantina !== g) return;
           if (!allowedYears.includes(p.tahun)) return;
 
-          const student = muridMap.get(p.muridId);
+          // Padankan rekod murid daripada pangkalan data murid secara tepat melalui ID atau Nama
+          const student =
+            (p.muridId && muridById.get(p.muridId.trim().toUpperCase())) ||
+            muridByName.get(p.nama.trim().toUpperCase());
           const uniqueKey = p.muridId || p.nama.trim().toUpperCase();
 
-          const defaultBirthYear = 2026 - p.tahun;
-          const fallbackTarikhLahir = student?.tarikhLahir || p.tarikhLahir || `01/01/${defaultBirthYear}`;
-          const fallbackNoSijil = student?.noSijilLahir || p.noSijilLahir || student?.id || p.muridId || '';
+          // 1. Ekstrak No. Pengenalan (Utamakan noPengenalan murid, p.noPengenalan, atau noSijilLahir)
+          const fallbackNoPengenalan =
+            student?.noPengenalan ||
+            student?.noSijilLahir ||
+            p.noPengenalan ||
+            p.noSijilLahir ||
+            student?.id ||
+            p.muridId ||
+            '';
+
+          // 2. Ekstrak Tarikh Lahir (Daripada rekod murid, MyKid/IC, atau unjuran tahun kelahiran)
+          let rawTarikh =
+            student?.tarikhLahir ||
+            p.tarikhLahir ||
+            extractDobFromIc(fallbackNoPengenalan);
+
+          if (!rawTarikh) {
+            const defaultBirthYear = 2026 - (p.tahun || 1);
+            rawTarikh = `01/01/${defaultBirthYear}`;
+          }
+
+          const fallbackTarikhLahir = formatTarikhLahir(rawTarikh);
+          const finalNoPengenalan = manualEdits[uniqueKey]?.noSijil || fallbackNoPengenalan;
+          const finalTarikhLahir = manualEdits[uniqueKey]?.tarikhLahir || fallbackTarikhLahir;
 
           const isSimpanan =
             p.isSimpanan ||
@@ -249,7 +327,11 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
 
           const existing = pMap.get(uniqueKey);
           if (existing) {
-            existing.eventTicks[matchedCol.id] = mark;
+            if (matchedCol) {
+              existing.eventTicks[matchedCol.id] = mark;
+            } else if (!existing.acaraLain?.includes(reg.acaraNama)) {
+              existing.acaraLain = [...(existing.acaraLain || []), reg.acaraNama];
+            }
           } else {
             pMap.set(uniqueKey, {
               idPeserta: p.idPeserta || p.muridId || '',
@@ -258,11 +340,15 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
               kelas: p.kelas,
               jantina: p.jantina,
               rumahSukan: p.rumahSukan,
-              tarikhLahir: manualEdits[uniqueKey]?.tarikhLahir || fallbackTarikhLahir,
-              noSijilLahir: manualEdits[uniqueKey]?.noSijil || fallbackNoSijil,
-              eventTicks: {
-                [matchedCol.id]: mark,
-              },
+              tarikhLahir: finalTarikhLahir,
+              noPengenalan: finalNoPengenalan,
+              noSijilLahir: finalNoPengenalan,
+              eventTicks: matchedCol
+                ? {
+                    [matchedCol.id]: mark,
+                  }
+                : {},
+              acaraLain: matchedCol ? [] : [reg.acaraNama],
             });
           }
         });
@@ -300,7 +386,7 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
       }
       return rows;
     },
-    [pendaftaranList, acaraList, muridMap, manualEdits, getYearsForAgeGroup]
+    [pendaftaranList, acaraList, muridById, muridByName, manualEdits, getYearsForAgeGroup, formatTarikhLahir, extractDobFromIc]
   );
 
   // Baris-baris bagi tetapan semasa
@@ -422,7 +508,7 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
         'Nombor Peserta',
         'Nama Peserta',
         'Tarikh Lahir',
-        'No. Sijil Lahir',
+        'No. Pengenalan',
         'Acara',
         '',
         '',
@@ -532,7 +618,7 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
       { wch: 15 },  // Nombor Peserta
       { wch: 32 },  // Nama Peserta
       { wch: 14 },  // Tarikh Lahir
-      { wch: 18 },  // No. Sijil Lahir
+      { wch: 18 },  // No. Pengenalan
       { wch: 8 },   // 60M
       { wch: 8 },   // 100M
       { wch: 8 },   // 200M
@@ -672,34 +758,65 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
               </select>
             </div>
 
-            {/* Tapisan Kategori Umur MSSR */}
-            <div className="flex items-center gap-1">
-              <span className="text-slate-500 font-medium">Kumpulan Umur:</span>
-              <select
-                value={selectedAgeGroup}
-                onChange={(e) => setSelectedAgeGroup(e.target.value as MssrAgeGroup)}
-                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-bold text-slate-800 focus:outline-none"
-              >
-                <option value="12TKB">12TKB (Tahun 6)</option>
-                <option value="11TKB">11TKB (Tahun 5)</option>
-                <option value="10TKB">10TKB (Tahun 4)</option>
-                <option value="9TKB">9TKB (Tahun 3)</option>
-                <option value="SEMUA">Semua Kumpulan Umur</option>
-              </select>
+            {/* Tapisan Kategori Umur MSSR (9TKB, 10TKB, 11TKB, 12TKB) */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-slate-500 font-semibold text-xs">Kategori:</span>
+              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300">
+                {(['9TKB', '10TKB', '11TKB', '12TKB', 'SEMUA'] as const).map((ag) => {
+                  const isSelected = selectedAgeGroup === ag;
+                  const label = ag === 'SEMUA' ? '9TKB-12TKB (Semua)' : ag;
+                  return (
+                    <button
+                      key={ag}
+                      type="button"
+                      onClick={() => setSelectedAgeGroup(ag)}
+                      className={`cursor-pointer px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                      title={
+                        ag === '12TKB'
+                          ? 'Bawah 12 Tahun (Tahun 6)'
+                          : ag === '11TKB'
+                          ? 'Bawah 11 Tahun (Tahun 5)'
+                          : ag === '10TKB'
+                          ? 'Bawah 10 Tahun (Tahun 4)'
+                          : ag === '9TKB'
+                          ? 'Bawah 9 Tahun (Tahun 1, 2, 3)'
+                          : 'Semua Kumpulan Umur MSSR'
+                      }
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Tapisan Jantina */}
-            <div className="flex items-center gap-1">
-              <span className="text-slate-500 font-medium">Jantina:</span>
-              <select
-                value={selectedGender}
-                onChange={(e) => setSelectedGender(e.target.value as MssrGender)}
-                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-bold text-slate-800 focus:outline-none"
-              >
-                <option value="Lelaki">Lelaki</option>
-                <option value="Perempuan">Perempuan</option>
-                <option value="SEMUA">Semua Jantina</option>
-              </select>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-slate-500 font-semibold text-xs">Jantina:</span>
+              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300">
+                {(['Lelaki', 'Perempuan', 'SEMUA'] as const).map((g) => {
+                  const isSelected = selectedGender === g;
+                  const label = g === 'SEMUA' ? 'L & P' : g;
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setSelectedGender(g)}
+                      className={`cursor-pointer px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                        isSelected
+                          ? 'bg-slate-900 text-white font-bold'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Bilangan Baris Minimum */}
@@ -793,7 +910,7 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
 
               <div className="space-y-1">
                 <div>
-                  Kategori : <span className="font-black">{selectedGender.toUpperCase()} {selectedAgeGroup}</span>
+                  Kategori : <span className="font-black">{formatMssrKategori(selectedAgeGroup, selectedGender)}</span>
                 </div>
                 <div className="text-[10px] text-slate-600 font-normal">
                   MSSR Bahagian Miri • Zon Bandar
@@ -820,7 +937,7 @@ export const OfficialMssrFormModal: React.FC<OfficialMssrFormModalProps> = ({
                       Tarikh Lahir
                     </th>
                     <th rowSpan={2} className="border border-black px-2 py-2 w-20">
-                      No. Sijil Lahir
+                      No. Pengenalan
                     </th>
                     <th colSpan={10} className="border border-black py-1 font-extrabold uppercase">
                       Acara
